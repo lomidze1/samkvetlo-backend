@@ -1,0 +1,21 @@
+// SOURCE OF TRUTH — copied to samkvetlo by pnpm shared:sync (ADR 0012)
+//
+// Only `zod` may be imported here. No `payload`, no Node built-ins, no
+// `@/collections/*` — this file is copied verbatim into the frontend repo.
+import { z } from 'zod'
+
+export const CONTRACT_VERSION = '2026-09-14.1'
+
+export const HealthSchema = z.strictObject({
+  ok: z.literal(true),
+  contractVersion: z.string(),
+})
+export type Health = z.infer<typeof HealthSchema>
+
+export const ErrorSchema = z.strictObject({
+  error: z.strictObject({
+    code: z.string(),
+    fields: z.record(z.string(), z.string()).optional(),
+  }),
+})
+export type ApiError = z.infer<typeof ErrorSchema>

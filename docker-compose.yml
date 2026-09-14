@@ -1,0 +1,11 @@
+name: samkvetlo
+services:
+  db:
+    image: postgres:18
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: samkvetlo }
+    ports: ["5433:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql          # PG18: არა /var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres"], interval: 5s, retries: 10 }
+volumes: { pgdata: {} }

@@ -1,0 +1,58 @@
+import type { Endpoint, PayloadRequest } from 'payload'
+import type { z, ZodType } from 'zod'
+
+import { CONTRACT_VERSION, ErrorSchema } from '../../shared/contract'
+import { checkServiceAuth, type ServiceScope } from '../../server/security/serviceAuth'
+
+type HttpMethod = 'connect' | 'delete' | 'get' | 'head' | 'options' | 'patch' | 'post' | 'put'
+
+interface PublicEndpointConfig<Output extends ZodType> {
+  /** Mounted under Payload's /api root, e.g. '/public/health' -> GET /api/public/health */
+  path: string
+  method: HttpMethod
+  scope: ServiceScope
+  output: Output
+  handler: (req: PayloadRequest) => Promise<z.infer<Output>>
+}
+
+function errorResponse(code: string, status: number): Response {
+  const body: z.infer<typeof ErrorSchema> = { error: { code } }
+  return Response.json(body, { status })
+}
+
+/**
+ * Wraps a /api/public/* handler with service-token auth and output validation
+ * (ADR 0005 layer 3, ADR 0012 §3-4). The handler's return value is checked
+ * against `output` before it is ever sent; an unknown key fails closed (500).
+ */
+export function publicEndpoint<Output extends ZodType>(
+  config: PublicEndpointConfig<Output>,
+): Endpoint {
+  return {
+    path: config.path,
+    method: config.method,
+    handler: async (req: PayloadRequest): Promise<Response> => {
+      const auth = checkServiceAuth(req, config.scope)
+      if (auth === 'unauthorized') {
+        return errorResponse('err.unauthorized', 401)
+      }
+      if (auth === 'forbidden') {
+        return errorResponse('err.forbidden', 403)
+      }
+
+      const result = await config.handler(req)
+      const parsed = config.output.safeParse(result)
+      if (!parsed.success) {
+        req.payload.logger.error(
+          { err: parsed.error, path: config.path },
+          'publicEndpoint: output failed contract schema',
+        )
+        return errorResponse('err.internal', 500)
+      }
+
+      return Response.json(parsed.data, {
+        headers: { 'x-contract-version': CONTRACT_VERSION },
+      })
+    },
+  }
+}
