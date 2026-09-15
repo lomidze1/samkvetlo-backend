@@ -8,5 +8,9 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
     include: ['tests/int/**/*.int.spec.ts'],
+    // Each int test file that calls getPayload() runs its own dev schema
+    // push against samkvetlo_test; running files concurrently races those
+    // pushes (duplicate CREATE TABLE). Files still run in one process.
+    fileParallelism: false,
   },
 })

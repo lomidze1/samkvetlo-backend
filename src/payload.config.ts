@@ -1,16 +1,65 @@
 import { postgresAdapter } from '@payloadcms/db-postgres'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
+import { s3Storage } from '@payloadcms/storage-s3'
 import path from 'path'
-import { buildConfig } from 'payload'
+import { buildConfig, type Plugin } from 'payload'
 import { fileURLToPath } from 'url'
 import sharp from 'sharp'
 
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
+import { PublicFiles } from './collections/PublicFiles'
+import { PrivateFiles } from './collections/PrivateFiles'
+import { Categories } from './collections/Categories'
+import { Products } from './collections/Products'
+import { Variants } from './collections/Variants'
+import { Suppliers } from './collections/Suppliers'
+import { Costings } from './collections/Costings'
+import { ExchangeRates } from './collections/ExchangeRates'
+import { PricingSettings } from './globals/PricingSettings'
 import { healthEndpoint } from './endpoints/public/health'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
+
+// ADR 0013 §1: the S3 adapter only turns on when S3_BUCKET is configured
+// (prod). Locally, files stay on disk and the backend serves them itself.
+const s3Plugins: Plugin[] = []
+if (process.env.S3_BUCKET) {
+  const s3Config = {
+    region: process.env.S3_REGION || 'auto',
+    endpoint: process.env.S3_ENDPOINT,
+    credentials: {
+      accessKeyId: process.env.S3_ACCESS_KEY_ID || '',
+      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || '',
+    },
+  }
+  s3Plugins.push(
+    s3Storage({
+      collections: {
+        media: { prefix: 'media', disablePayloadAccessControl: true },
+        'public-files': { prefix: 'files', disablePayloadAccessControl: true },
+      },
+      bucket: process.env.S3_BUCKET,
+      config: s3Config,
+    }),
+  )
+  // private-files: separate, non-public bucket (ADR 0013 §1) — never gets
+  // disablePayloadAccessControl, so every read still goes through Payload's
+  // collection access control (isAdmin).
+  if (process.env.S3_PRIVATE_BUCKET) {
+    s3Plugins.push(
+      s3Storage({
+        collections: {
+          'private-files': true,
+        },
+        bucket: process.env.S3_PRIVATE_BUCKET,
+        config: s3Config,
+        clientCacheKey: 's3:private',
+      }),
+    )
+  }
+}
 
 export default buildConfig({
   admin: {
@@ -22,7 +71,19 @@ export default buildConfig({
       titleSuffix: ' · სამკვეთლო',
     },
   },
-  collections: [Users, Media],
+  collections: [
+    Users,
+    Media,
+    PublicFiles,
+    PrivateFiles,
+    Categories,
+    Products,
+    Variants,
+    Suppliers,
+    Costings,
+    ExchangeRates,
+  ],
+  globals: [PricingSettings],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   serverURL: process.env.BACKEND_URL,
@@ -41,5 +102,13 @@ export default buildConfig({
     },
   }),
   sharp,
-  plugins: [],
+  // ADR 0013 §7: root fileSize limit (4 MB, below Vercel's 4.5 MB body cap).
+  // abortOnLimit turns an oversized upload into a 413 instead of a silently
+  // truncated file.
+  upload: {
+    limits: { fileSize: 4_000_000 },
+    abortOnLimit: true,
+    responseOnLimit: 'ფოტო 4 MB-ზე დიდია. გამოიყენეთ ფოტოს სტანდარტის ექსპორტი (JPEG, 2400 px)',
+  },
+  plugins: s3Plugins,
 })

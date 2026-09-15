@@ -38,6 +38,8 @@ yarn-error.log*
 next-env.d.ts
 
 /media
+/public-files
+/private-files
 
 # Playwright
 /test-results/

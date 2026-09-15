@@ -69,15 +69,35 @@ export interface Config {
   collections: {
     users: User;
     media: Media;
+    'public-files': PublicFile;
+    'private-files': PrivateFile;
+    categories: Category;
+    products: Product;
+    variants: Variant;
+    suppliers: Supplier;
+    costings: Costing;
+    'exchange-rates': ExchangeRate;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
     'payload-migrations': PayloadMigration;
   };
-  collectionsJoins: {};
+  collectionsJoins: {
+    products: {
+      variants: 'variants';
+    };
+  };
   collectionsSelect: {
     users: UsersSelect<false> | UsersSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
+    'public-files': PublicFilesSelect<false> | PublicFilesSelect<true>;
+    'private-files': PrivateFilesSelect<false> | PrivateFilesSelect<true>;
+    categories: CategoriesSelect<false> | CategoriesSelect<true>;
+    products: ProductsSelect<false> | ProductsSelect<true>;
+    variants: VariantsSelect<false> | VariantsSelect<true>;
+    suppliers: SuppliersSelect<false> | SuppliersSelect<true>;
+    costings: CostingsSelect<false> | CostingsSelect<true>;
+    'exchange-rates': ExchangeRatesSelect<false> | ExchangeRatesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -87,8 +107,12 @@ export interface Config {
     defaultIDType: number;
   };
   fallbackLocale: null;
-  globals: {};
-  globalsSelect: {};
+  globals: {
+    'pricing-settings': PricingSetting;
+  };
+  globalsSelect: {
+    'pricing-settings': PricingSettingsSelect<false> | PricingSettingsSelect<true>;
+  };
   locale: null;
   widgets: {
     collections: CollectionsWidget;
@@ -149,6 +173,7 @@ export interface User {
 export interface Media {
   id: number;
   alt: string;
+  blurDataURL?: string | null;
   updatedAt: string;
   createdAt: string;
   url?: string | null;
@@ -160,6 +185,308 @@ export interface Media {
   height?: number | null;
   focalX?: number | null;
   focalY?: number | null;
+  sizes?: {
+    w320?: {
+      url?: string | null;
+      width?: number | null;
+      height?: number | null;
+      mimeType?: string | null;
+      filesize?: number | null;
+      filename?: string | null;
+    };
+    w640?: {
+      url?: string | null;
+      width?: number | null;
+      height?: number | null;
+      mimeType?: string | null;
+      filesize?: number | null;
+      filename?: string | null;
+    };
+    w960?: {
+      url?: string | null;
+      width?: number | null;
+      height?: number | null;
+      mimeType?: string | null;
+      filesize?: number | null;
+      filename?: string | null;
+    };
+    w1280?: {
+      url?: string | null;
+      width?: number | null;
+      height?: number | null;
+      mimeType?: string | null;
+      filesize?: number | null;
+      filename?: string | null;
+    };
+    w1920?: {
+      url?: string | null;
+      width?: number | null;
+      height?: number | null;
+      mimeType?: string | null;
+      filesize?: number | null;
+      filename?: string | null;
+    };
+    og?: {
+      url?: string | null;
+      width?: number | null;
+      height?: number | null;
+      mimeType?: string | null;
+      filesize?: number | null;
+      filename?: string | null;
+    };
+  };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "public-files".
+ */
+export interface PublicFile {
+  id: number;
+  updatedAt: string;
+  createdAt: string;
+  url?: string | null;
+  thumbnailURL?: string | null;
+  filename?: string | null;
+  mimeType?: string | null;
+  filesize?: number | null;
+  width?: number | null;
+  height?: number | null;
+  focalX?: number | null;
+  focalY?: number | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "private-files".
+ */
+export interface PrivateFile {
+  id: number;
+  updatedAt: string;
+  createdAt: string;
+  url?: string | null;
+  thumbnailURL?: string | null;
+  filename?: string | null;
+  mimeType?: string | null;
+  filesize?: number | null;
+  width?: number | null;
+  height?: number | null;
+  focalX?: number | null;
+  focalY?: number | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "categories".
+ */
+export interface Category {
+  id: number;
+  name: string;
+  /**
+   * ავტომატურად ივსება სახელიდან
+   */
+  slug?: string | null;
+  parent?: (number | null) | Category;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "products".
+ */
+export interface Product {
+  id: number;
+  title: string;
+  /**
+   * ავტომატურად ივსება სახელიდან
+   */
+  slug?: string | null;
+  category: number | Category;
+  tier: 'flagship' | 'standard';
+  featured?: boolean | null;
+  description: {
+    root: {
+      type: string;
+      children: {
+        type: any;
+        version: number;
+        [k: string]: unknown;
+      }[];
+      direction: ('ltr' | 'rtl') | null;
+      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
+      indent: number;
+      version: number;
+    };
+    [k: string]: unknown;
+  };
+  features?:
+    | {
+        label: string;
+        value: string;
+        id?: string | null;
+      }[]
+    | null;
+  gallery?: (number | Media)[] | null;
+  whyQuality?: {
+    root: {
+      type: string;
+      children: {
+        type: any;
+        version: number;
+        [k: string]: unknown;
+      }[];
+      direction: ('ltr' | 'rtl') | null;
+      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
+      indent: number;
+      version: number;
+    };
+    [k: string]: unknown;
+  } | null;
+  documents?:
+    | {
+        title: string;
+        kind: 'certificate' | 'passport' | 'other';
+        file: number | PublicFile;
+        issuer?: string | null;
+        reviewedNoSecretInfo?: boolean | null;
+        id?: string | null;
+      }[]
+    | null;
+  videos?:
+    | {
+        youtubeId: string;
+        poster: number | Media;
+        title?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  sound?: (number | null) | PublicFile;
+  variants?: {
+    docs?: (number | Variant)[];
+    hasNextPage?: boolean;
+    totalDocs?: number;
+  };
+  /**
+   * ავტომატურად ითვლება ვარიანტებიდან
+   */
+  minPrice?: number | null;
+  /**
+   * ავტომატურად ითვლება ვარიანტებიდან
+   */
+  isPurchasable?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+  _status?: ('draft' | 'published') | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "variants".
+ */
+export interface Variant {
+  id: number;
+  product: number | Product;
+  /**
+   * მაგ. „მოოქროვილი · 50 კგ“
+   */
+  title: string;
+  coating: 'gilding' | 'silvering' | 'gold-leaf' | 'enamel' | 'none';
+  size?: string | null;
+  weightKg?: number | null;
+  diameterMm?: number | null;
+  heightMm?: number | null;
+  sortOrder?: number | null;
+  /**
+   * ავტომატურად ივსება (SMK-000123)
+   */
+  sku?: string | null;
+  availability: 'ready' | 'made-to-order';
+  /**
+   * მაგ. „7–14 დღე“
+   */
+  leadTimeText?: string | null;
+  /**
+   * იცვლება მხოლოდ ფასის დადასტურებით (Costing → დადასტურება)
+   */
+  price?: number | null;
+  priceStatus?: ('draft' | 'approved' | 'needs-review') | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "suppliers".
+ */
+export interface Supplier {
+  id: number;
+  name: string;
+  website?: string | null;
+  contact?: string | null;
+  photosAllowed?: boolean | null;
+  photosCondition?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "costings".
+ */
+export interface Costing {
+  id: number;
+  variant: number | Variant;
+  supplier?: (number | null) | Supplier;
+  supplierUrl?: string | null;
+  supplierSku?: string | null;
+  costRub: number;
+  logisticsGel: number;
+  otherCostsGel?: number | null;
+  /**
+   * ცარიელია → pricing-settings-ის default
+   */
+  bankFeePct?: number | null;
+  /**
+   * ცარიელია → pricing-settings-ის default
+   */
+  bufferPct?: number | null;
+  georgianMarketPriceGel?: number | null;
+  notes?: string | null;
+  rateDate?: string | null;
+  rubGel?: number | null;
+  usdGel?: number | null;
+  pUsed?: number | null;
+  costGel?: number | null;
+  markupGel?: number | null;
+  suggestedPriceGel?: number | null;
+  markupSharePct?: number | null;
+  indicator?: ('green' | 'yellow' | 'red') | null;
+  proposedPriceGel?: number | null;
+  autoPricing?: boolean | null;
+  priceHistory?:
+    | {
+        from?: number | null;
+        to: number;
+        by?: (number | null) | User;
+        at: string;
+        reason?: string | null;
+        rateDate?: string | null;
+        auto?: boolean | null;
+        id?: string | null;
+      }[]
+    | null;
+  approvedBy?: (number | null) | User;
+  approvedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "exchange-rates".
+ */
+export interface ExchangeRate {
+  id: number;
+  date: string;
+  rubGel: number;
+  usdGel: number;
+  source?: string | null;
+  fetchedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -192,6 +519,38 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'media';
         value: number | Media;
+      } | null)
+    | ({
+        relationTo: 'public-files';
+        value: number | PublicFile;
+      } | null)
+    | ({
+        relationTo: 'private-files';
+        value: number | PrivateFile;
+      } | null)
+    | ({
+        relationTo: 'categories';
+        value: number | Category;
+      } | null)
+    | ({
+        relationTo: 'products';
+        value: number | Product;
+      } | null)
+    | ({
+        relationTo: 'variants';
+        value: number | Variant;
+      } | null)
+    | ({
+        relationTo: 'suppliers';
+        value: number | Supplier;
+      } | null)
+    | ({
+        relationTo: 'costings';
+        value: number | Costing;
+      } | null)
+    | ({
+        relationTo: 'exchange-rates';
+        value: number | ExchangeRate;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -263,6 +622,7 @@ export interface UsersSelect<T extends boolean = true> {
  */
 export interface MediaSelect<T extends boolean = true> {
   alt?: T;
+  blurDataURL?: T;
   updatedAt?: T;
   createdAt?: T;
   url?: T;
@@ -274,6 +634,252 @@ export interface MediaSelect<T extends boolean = true> {
   height?: T;
   focalX?: T;
   focalY?: T;
+  sizes?:
+    | T
+    | {
+        w320?:
+          | T
+          | {
+              url?: T;
+              width?: T;
+              height?: T;
+              mimeType?: T;
+              filesize?: T;
+              filename?: T;
+            };
+        w640?:
+          | T
+          | {
+              url?: T;
+              width?: T;
+              height?: T;
+              mimeType?: T;
+              filesize?: T;
+              filename?: T;
+            };
+        w960?:
+          | T
+          | {
+              url?: T;
+              width?: T;
+              height?: T;
+              mimeType?: T;
+              filesize?: T;
+              filename?: T;
+            };
+        w1280?:
+          | T
+          | {
+              url?: T;
+              width?: T;
+              height?: T;
+              mimeType?: T;
+              filesize?: T;
+              filename?: T;
+            };
+        w1920?:
+          | T
+          | {
+              url?: T;
+              width?: T;
+              height?: T;
+              mimeType?: T;
+              filesize?: T;
+              filename?: T;
+            };
+        og?:
+          | T
+          | {
+              url?: T;
+              width?: T;
+              height?: T;
+              mimeType?: T;
+              filesize?: T;
+              filename?: T;
+            };
+      };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "public-files_select".
+ */
+export interface PublicFilesSelect<T extends boolean = true> {
+  updatedAt?: T;
+  createdAt?: T;
+  url?: T;
+  thumbnailURL?: T;
+  filename?: T;
+  mimeType?: T;
+  filesize?: T;
+  width?: T;
+  height?: T;
+  focalX?: T;
+  focalY?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "private-files_select".
+ */
+export interface PrivateFilesSelect<T extends boolean = true> {
+  updatedAt?: T;
+  createdAt?: T;
+  url?: T;
+  thumbnailURL?: T;
+  filename?: T;
+  mimeType?: T;
+  filesize?: T;
+  width?: T;
+  height?: T;
+  focalX?: T;
+  focalY?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "categories_select".
+ */
+export interface CategoriesSelect<T extends boolean = true> {
+  name?: T;
+  slug?: T;
+  parent?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "products_select".
+ */
+export interface ProductsSelect<T extends boolean = true> {
+  title?: T;
+  slug?: T;
+  category?: T;
+  tier?: T;
+  featured?: T;
+  description?: T;
+  features?:
+    | T
+    | {
+        label?: T;
+        value?: T;
+        id?: T;
+      };
+  gallery?: T;
+  whyQuality?: T;
+  documents?:
+    | T
+    | {
+        title?: T;
+        kind?: T;
+        file?: T;
+        issuer?: T;
+        reviewedNoSecretInfo?: T;
+        id?: T;
+      };
+  videos?:
+    | T
+    | {
+        youtubeId?: T;
+        poster?: T;
+        title?: T;
+        id?: T;
+      };
+  sound?: T;
+  variants?: T;
+  minPrice?: T;
+  isPurchasable?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  _status?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "variants_select".
+ */
+export interface VariantsSelect<T extends boolean = true> {
+  product?: T;
+  title?: T;
+  coating?: T;
+  size?: T;
+  weightKg?: T;
+  diameterMm?: T;
+  heightMm?: T;
+  sortOrder?: T;
+  sku?: T;
+  availability?: T;
+  leadTimeText?: T;
+  price?: T;
+  priceStatus?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "suppliers_select".
+ */
+export interface SuppliersSelect<T extends boolean = true> {
+  name?: T;
+  website?: T;
+  contact?: T;
+  photosAllowed?: T;
+  photosCondition?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "costings_select".
+ */
+export interface CostingsSelect<T extends boolean = true> {
+  variant?: T;
+  supplier?: T;
+  supplierUrl?: T;
+  supplierSku?: T;
+  costRub?: T;
+  logisticsGel?: T;
+  otherCostsGel?: T;
+  bankFeePct?: T;
+  bufferPct?: T;
+  georgianMarketPriceGel?: T;
+  notes?: T;
+  rateDate?: T;
+  rubGel?: T;
+  usdGel?: T;
+  pUsed?: T;
+  costGel?: T;
+  markupGel?: T;
+  suggestedPriceGel?: T;
+  markupSharePct?: T;
+  indicator?: T;
+  proposedPriceGel?: T;
+  autoPricing?: T;
+  priceHistory?:
+    | T
+    | {
+        from?: T;
+        to?: T;
+        by?: T;
+        at?: T;
+        reason?: T;
+        rateDate?: T;
+        auto?: T;
+        id?: T;
+      };
+  approvedBy?: T;
+  approvedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "exchange-rates_select".
+ */
+export interface ExchangeRatesSelect<T extends boolean = true> {
+  date?: T;
+  rubGel?: T;
+  usdGel?: T;
+  source?: T;
+  fetchedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -314,6 +920,58 @@ export interface PayloadMigrationsSelect<T extends boolean = true> {
   batch?: T;
   updatedAt?: T;
   createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "pricing-settings".
+ */
+export interface PricingSetting {
+  id: number;
+  pPercent: number;
+  pConfirmed?: boolean | null;
+  categoryOverrides?:
+    | {
+        category: number | Category;
+        pPercent: number;
+        id?: string | null;
+      }[]
+    | null;
+  minMarkupUsd: number;
+  maxMarkupUsd: number;
+  roundingStepGel: number;
+  defaultBankFeePct: number;
+  defaultBufferPct: number;
+  thresholdYellowPct: number;
+  thresholdRedPct: number;
+  needsReviewPct: number;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "pricing-settings_select".
+ */
+export interface PricingSettingsSelect<T extends boolean = true> {
+  pPercent?: T;
+  pConfirmed?: T;
+  categoryOverrides?:
+    | T
+    | {
+        category?: T;
+        pPercent?: T;
+        id?: T;
+      };
+  minMarkupUsd?: T;
+  maxMarkupUsd?: T;
+  roundingStepGel?: T;
+  defaultBankFeePct?: T;
+  defaultBufferPct?: T;
+  thresholdYellowPct?: T;
+  thresholdRedPct?: T;
+  needsReviewPct?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
