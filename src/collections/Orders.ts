@@ -38,8 +38,8 @@ export const Orders: CollectionConfig = {
     delete: isAdmin,
   },
   hooks: {
-    beforeValidate: [generateOrderNumber],
     beforeChange: [computeOrderTotals, trackOrderStatusHistory],
+    afterChange: [generateOrderNumber],
   },
   fields: [
     {

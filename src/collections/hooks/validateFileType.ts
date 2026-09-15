@@ -9,6 +9,10 @@ const EXTENSION_BY_MIME: Record<string, string> = {
   'application/pdf': 'pdf',
   'audio/mpeg': 'mp3',
   'audio/mp4': 'm4a',
+  // file-type 22.1.0 detects an M4A's magic bytes as audio/x-m4a, not
+  // audio/mp4 (code review finding on T1.1–T1.8) — both map to the same
+  // extension.
+  'audio/x-m4a': 'm4a',
 }
 
 /**

@@ -209,4 +209,118 @@ describe('products + variants (T1.3, ADR 0002 / 0009)', () => {
     const issuerField = documentsField.fields.find((field) => 'name' in field && field.name === 'issuer')
     expect(issuerField && 'type' in issuerField ? issuerField.type : undefined).toBe('text')
   })
+
+  // Code review fix (T1.1–T1.8): publicRead (`() => true`) let an anonymous
+  // `?draft=true` request read a draft product regardless of collection
+  // access — replaced by publicReadPublished, which constrains an
+  // anonymous reader to `_status: 'published'` no matter what `draft` asks
+  // for.
+  it('7) an anonymous ?draft=true request never returns a draft product', async () => {
+    const category = await createCategory()
+    const draft = await payload.create({
+      collection: 'products',
+      data: {
+        title: 'დრაფტი-პროდუქტი',
+        category: category.id,
+        tier: 'standard',
+        description: EMPTY_RICH_TEXT,
+        _status: 'draft',
+      },
+    })
+    productIds.push(draft.id)
+
+    const { docs } = await payload.find({
+      collection: 'products',
+      where: { id: { equals: draft.id } },
+      draft: true,
+      overrideAccess: false,
+      user: null,
+    })
+    expect(docs).toHaveLength(0)
+  })
+
+  // Same leak, one level down: variants have no _status of their own, so
+  // without publicReadVariantOfPublishedProduct an anonymous read of
+  // /api/variants would still reveal the title/price/SKU of a draft
+  // product's variant.
+  it('8) a variant of a draft product is not visible to an anonymous read', async () => {
+    const category = await createCategory()
+    const draft = await payload.create({
+      collection: 'products',
+      data: {
+        title: 'დრაფტი-ვარიანტიანი',
+        category: category.id,
+        tier: 'standard',
+        description: EMPTY_RICH_TEXT,
+        _status: 'draft',
+      },
+    })
+    productIds.push(draft.id)
+
+    const { docs: variants } = await payload.find({
+      collection: 'variants',
+      where: { product: { equals: draft.id } },
+    })
+    const variant = variants[0]!
+
+    const { docs: anonymousVariants } = await payload.find({
+      collection: 'variants',
+      where: { id: { equals: variant.id } },
+      overrideAccess: false,
+      user: null,
+    })
+    expect(anonymousVariants).toHaveLength(0)
+  })
+
+  // Code review fix (T1.1–T1.8): recomputeProductPricing used
+  // payload.update(), which reads the *latest* version (a pending draft, if
+  // one exists) as its base and — since it saves without `draft: true` —
+  // writes that base out as the published document. Approving a price on a
+  // published product with an unsaved draft edit therefore silently
+  // published (or merged in) the draft.
+  it('9) approving a price on a published product with a pending draft edit does not touch the draft or publish it', async () => {
+    const category = await createCategory()
+    const product = await payload.create({
+      collection: 'products',
+      data: {
+        title: 'გამოქვეყნებული-სახელი',
+        category: category.id,
+        tier: 'standard',
+        description: EMPTY_RICH_TEXT,
+        _status: 'published',
+      },
+    })
+    productIds.push(product.id)
+
+    // An unsaved draft edit sitting on top of the published doc.
+    await payload.update({
+      collection: 'products',
+      id: product.id,
+      data: { title: 'დრაფტი-სახელი' },
+      draft: true,
+    })
+
+    const { docs: variants } = await payload.find({
+      collection: 'variants',
+      where: { product: { equals: product.id } },
+    })
+    const variant = variants[0]!
+
+    // Simulates the approve endpoint (T1.4), which triggers
+    // recomputeProductPricingAfterChange via variants' afterChange hook.
+    await payload.update({
+      collection: 'variants',
+      id: variant.id,
+      data: { price: 5000, priceStatus: 'approved' },
+      overrideAccess: true,
+    })
+
+    const published = await payload.findByID({ collection: 'products', id: product.id, draft: false })
+    expect(published.title).toBe('გამოქვეყნებული-სახელი')
+    expect(published.minPrice).toBe(5000)
+    expect(published.isPurchasable).toBe(true)
+
+    const draftVersion = await payload.findByID({ collection: 'products', id: product.id, draft: true })
+    expect(draftVersion.title).toBe('დრაფტი-სახელი')
+  })
 })

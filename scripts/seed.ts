@@ -1,0 +1,603 @@
+// ADR 0005 T1.10: dev/test catalog + delivery zones. Idempotent (re-running
+// never duplicates a category/product/portfolio item/delivery zone).
+// `SEED_SENTINEL=1` additionally writes tests/fixtures/sentinel.ts's unique
+// values into every hidden field, so the secrecy test (tests/int/secrecy.
+// int.spec.ts) can prove none of it ever reaches a public DTO/endpoint.
+import 'dotenv/config'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import sharp from 'sharp'
+import { getPayload, type Payload } from 'payload'
+
+import config from '../src/payload.config'
+import { slugify } from '../src/lib/translit'
+import { SENTINEL } from '../tests/fixtures/sentinel'
+
+const dirname = path.dirname(fileURLToPath(import.meta.url))
+const FIXTURES_DIR = path.resolve(dirname, '../tests/fixtures')
+
+// afterChange/afterDelete revalidate hooks (T1.11) must stay silent while
+// seeding — there's no frontend to notify yet in CI, and a real dev run
+// would otherwise fire dozens of webhook POSTs for one `pnpm seed`.
+const SEED_CONTEXT = { disableRevalidate: true }
+
+// Named once, reused by both runSeed and teardownSeed (the latter is for
+// int tests that call runSeed against the shared samkvetlo_test DB and must
+// not leave a permanent catalog behind for unrelated tests — e.g.
+// ratesRecompute.int.spec.ts's recomputeCostingsForNewRate walks *every*
+// costing in the DB, so a leftover seeded costing changes its counts).
+const CATEGORY_NAMES = ['ზარები', 'საეკლესიო ზარები', 'შანდლები', 'ჭურჭელი'] as const
+const PRODUCT_TITLES = ['საეკლესიო ზარი „მთავარანგელოზი“', 'შანდალი „კეთილი“', 'ბარძიმი „წმინდა“'] as const
+const PORTFOLIO_CHURCH = 'წმინდა გიორგის საკათედრო ტაძარი'
+const SEED_SUPPLIER_NAME = 'სამკვეთლოს მიმწოდებელი'
+
+// ---------------------------------------------------------------------------
+// Placeholder images (ADR: real-size, gray + "PLACEHOLDER" text, never an AI
+// photo) — generated on the fly with sharp from an inline SVG, ≥ 2000px.
+// ---------------------------------------------------------------------------
+let placeholderImageCache: Buffer | null = null
+async function placeholderImage(): Promise<Buffer> {
+  if (placeholderImageCache) return placeholderImageCache
+  const size = 2200
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
+    <rect width="100%" height="100%" fill="#9a9a9a"/>
+    <text x="50%" y="50%" font-family="sans-serif" font-size="140" fill="#f2f2f2"
+      text-anchor="middle" dominant-baseline="middle">PLACEHOLDER</text>
+  </svg>`
+  placeholderImageCache = await sharp(Buffer.from(svg)).jpeg({ quality: 82 }).toBuffer()
+  return placeholderImageCache
+}
+
+async function createPlaceholderMedia(payload: Payload, alt: string): Promise<number> {
+  const data = await placeholderImage()
+  const doc = await payload.create({
+    collection: 'media',
+    data: { alt },
+    file: { data, mimetype: 'image/jpeg', name: 'placeholder.jpg', size: data.length },
+    overrideAccess: true,
+    context: SEED_CONTEXT,
+  })
+  return doc.id
+}
+
+// ---------------------------------------------------------------------------
+// Small idempotent upsert helpers
+// ---------------------------------------------------------------------------
+async function ensureAdmin(payload: Payload): Promise<void> {
+  const email = process.env.SEED_ADMIN_EMAIL
+  const password = process.env.SEED_ADMIN_PASSWORD
+  if (!email || !password) {
+    console.warn('seed: SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD not set — skipping admin user')
+    return
+  }
+  const { docs } = await payload.find({
+    collection: 'users',
+    where: { email: { equals: email } },
+    limit: 1,
+    overrideAccess: true,
+  })
+  if (docs[0]) return
+  await payload.create({ collection: 'users', data: { email, password }, overrideAccess: true })
+}
+
+async function upsertCategory(payload: Payload, name: string, parentId?: number): Promise<number> {
+  const slug = slugify(name)
+  const { docs } = await payload.find({
+    collection: 'categories',
+    where: { slug: { equals: slug } },
+    limit: 1,
+    overrideAccess: true,
+  })
+  if (docs[0]) return docs[0].id
+  const doc = await payload.create({
+    collection: 'categories',
+    data: { name, parent: parentId },
+    overrideAccess: true,
+    context: SEED_CONTEXT,
+  })
+  return doc.id
+}
+
+async function ensureExchangeRate(payload: Payload): Promise<void> {
+  const { docs } = await payload.find({ collection: 'exchange-rates', limit: 1, overrideAccess: true })
+  if (docs[0]) return
+  await payload.create({
+    collection: 'exchange-rates',
+    data: {
+      // Fixed and deliberately early (not "now"): computeCostingFields only
+      // needs *some* baseline rate to exist, and other int tests
+      // (costings/ratesRecompute) create their own dated 2026 rates and
+      // rely on being the most recent by date — a "now" seed rate would
+      // otherwise race ahead of them once it's September 2026.
+      date: '2025-06-01T00:00:00.000Z',
+      rubGel: 0.0305,
+      usdGel: 2.66,
+      source: 'seed',
+      fetchedAt: new Date().toISOString(),
+    },
+    overrideAccess: true,
+  })
+}
+
+async function upsertSupplier(payload: Payload, sentinelMode: boolean): Promise<number> {
+  const name = sentinelMode ? SENTINEL.supplierName : 'სამკვეთლოს მიმწოდებელი'
+  const { docs } = await payload.find({
+    collection: 'suppliers',
+    where: { name: { equals: name } },
+    limit: 1,
+    overrideAccess: true,
+  })
+  if (docs[0]) return docs[0].id
+  const doc = await payload.create({
+    collection: 'suppliers',
+    data: { name, photosAllowed: false },
+    overrideAccess: true,
+  })
+  return doc.id
+}
+
+async function loadPdf(): Promise<Buffer> {
+  return fs.readFile(path.join(FIXTURES_DIR, 'sample.pdf'))
+}
+
+const EMPTY_RICH_TEXT = (text: string) => ({
+  root: {
+    type: 'root' as const,
+    direction: null,
+    format: '' as const,
+    indent: 0,
+    version: 1 as const,
+    children: [
+      {
+        type: 'paragraph' as const,
+        direction: null,
+        format: '' as const,
+        indent: 0,
+        version: 1 as const,
+        children: [
+          { type: 'text' as const, detail: 0, format: 0, mode: 'normal' as const, style: '', text, version: 1 as const },
+        ],
+      },
+    ],
+  },
+})
+
+interface VariantSeed {
+  title: string
+  coating: 'gilding' | 'silvering' | 'gold-leaf' | 'enamel' | 'none'
+  size?: string
+  weightKg?: number
+  diameterMm?: number
+  heightMm?: number
+  leadTimeText?: string
+  costRub: number
+  logisticsGel: number
+}
+
+interface ProductDocumentInput {
+  title: string
+  kind: 'certificate' | 'passport' | 'other'
+  file: number
+  issuer?: string
+  reviewedNoSecretInfo: boolean
+}
+
+interface ProductSeed {
+  title: string
+  categoryId: number
+  tier: 'flagship' | 'standard'
+  featured?: boolean
+  galleryCount: number
+  withDocument?: boolean
+  variants: VariantSeed[]
+}
+
+async function approveVariant(payload: Payload, variantId: number, costingId: number, price: number): Promise<void> {
+  const now = new Date().toISOString()
+  await payload.update({
+    collection: 'variants',
+    id: variantId,
+    data: { price, priceStatus: 'approved' },
+    overrideAccess: true,
+    context: SEED_CONTEXT,
+  })
+  await payload.update({
+    collection: 'costings',
+    id: costingId,
+    data: { proposedPriceGel: price, approvedAt: now },
+    overrideAccess: true,
+  })
+}
+
+async function seedProduct(
+  payload: Payload,
+  seed: ProductSeed,
+  supplierId: number,
+  sentinelMode: boolean,
+): Promise<void> {
+  const slug = slugify(seed.title)
+  const { docs: existing } = await payload.find({
+    collection: 'products',
+    where: { slug: { equals: slug } },
+    limit: 1,
+    overrideAccess: true,
+  })
+  if (existing[0]) return // already fully seeded (idempotent)
+
+  const galleryIds: number[] = []
+  for (let i = 0; i < seed.galleryCount; i += 1) {
+    galleryIds.push(await createPlaceholderMedia(payload, `${seed.title} — ფოტო ${i + 1} (placeholder)`))
+  }
+
+  let documents: ProductDocumentInput[] | undefined
+  if (seed.withDocument) {
+    const pdf = await loadPdf()
+    const publicFile = await payload.create({
+      collection: 'public-files',
+      data: {},
+      file: { data: pdf, mimetype: 'application/pdf', name: 'certificate.pdf', size: pdf.length },
+      overrideAccess: true,
+      context: SEED_CONTEXT,
+    })
+    documents = [
+      {
+        title: 'ხარისხის სერტიფიკატი',
+        kind: 'certificate',
+        file: publicFile.id,
+        issuer: sentinelMode ? SENTINEL.supplierName : undefined,
+        reviewedNoSecretInfo: true,
+      },
+    ]
+  }
+
+  const product = await payload.create({
+    collection: 'products',
+    data: {
+      title: seed.title,
+      category: seed.categoryId,
+      tier: seed.tier,
+      featured: seed.featured ?? false,
+      description: EMPTY_RICH_TEXT(`${seed.title} — ხელნაკეთი, საეკლესიო გამოყენებისთვის. სრული აღწერა მალე დაემატება.`),
+      whyQuality: seed.tier === 'flagship' ? EMPTY_RICH_TEXT('ხელნაკეთი, საუკეთესო მასალით და ხანგრძლივი გამოცდილებით.') : undefined,
+      gallery: galleryIds,
+      documents,
+      _status: 'published',
+    },
+    overrideAccess: true,
+    context: SEED_CONTEXT,
+  })
+
+  // The product's own afterChange hook (createDefaultVariant) just made one
+  // default variant ("სტანდარტული") — reuse it as the first seed variant
+  // instead of creating a duplicate.
+  const { docs: defaultVariants } = await payload.find({
+    collection: 'variants',
+    where: { product: { equals: product.id } },
+    limit: 1,
+    overrideAccess: true,
+  })
+  const defaultVariantId = defaultVariants[0]!.id
+
+  for (const [index, variantSeed] of seed.variants.entries()) {
+    const variantId =
+      index === 0
+        ? await payload
+            .update({
+              collection: 'variants',
+              id: defaultVariantId,
+              data: {
+                title: variantSeed.title,
+                coating: variantSeed.coating,
+                size: variantSeed.size,
+                weightKg: variantSeed.weightKg,
+                diameterMm: variantSeed.diameterMm,
+                heightMm: variantSeed.heightMm,
+                leadTimeText: variantSeed.leadTimeText,
+                sortOrder: index,
+              },
+              overrideAccess: true,
+              context: SEED_CONTEXT,
+            })
+            .then((doc) => doc.id)
+        : await payload
+            .create({
+              collection: 'variants',
+              data: {
+                product: product.id,
+                title: variantSeed.title,
+                coating: variantSeed.coating,
+                size: variantSeed.size,
+                weightKg: variantSeed.weightKg,
+                diameterMm: variantSeed.diameterMm,
+                heightMm: variantSeed.heightMm,
+                leadTimeText: variantSeed.leadTimeText,
+                sortOrder: index,
+                availability: 'ready',
+              },
+              overrideAccess: true,
+              context: SEED_CONTEXT,
+            })
+            .then((doc) => doc.id)
+
+    const costing = await payload.create({
+      collection: 'costings',
+      data: {
+        variant: variantId,
+        supplier: supplierId,
+        supplierUrl: sentinelMode ? SENTINEL.supplierUrl : 'https://supplier.invalid/catalog',
+        supplierSku: sentinelMode ? SENTINEL.supplierSku : `SUP-${variantId}`,
+        costRub: sentinelMode ? SENTINEL.costRub : variantSeed.costRub,
+        logisticsGel: variantSeed.logisticsGel,
+        notes: sentinelMode ? SENTINEL.note : undefined,
+      },
+      overrideAccess: true,
+    })
+
+    await approveVariant(payload, variantId, costing.id, costing.suggestedPriceGel!)
+  }
+}
+
+async function seedPortfolio(payload: Payload, productId: number): Promise<void> {
+  const church = 'წმინდა გიორგის საკათედრო ტაძარი'
+  const slug = slugify(church)
+  const { docs } = await payload.find({
+    collection: 'portfolio',
+    where: { slug: { equals: slug } },
+    limit: 1,
+    overrideAccess: true,
+  })
+  if (docs[0]) return
+
+  const photoId = await createPlaceholderMedia(payload, 'ნამუშევრის ფოტო (placeholder)')
+  await payload.create({
+    collection: 'portfolio',
+    data: {
+      church,
+      city: 'თბილისი',
+      photos: [photoId],
+      products: [productId],
+      consent: true,
+      _status: 'published',
+    },
+    overrideAccess: true,
+    context: SEED_CONTEXT,
+  })
+}
+
+interface ZoneSeed {
+  name: string
+  feeGel: number
+  sortOrder: number
+  examples?: string
+}
+
+// _doc/design/pages.md §8 — placeholder regions, ⏳ owner confirmation.
+const DELIVERY_ZONES: ZoneSeed[] = [
+  { name: 'თბილისი', feeGel: 0, sortOrder: 0 },
+  { name: 'აჭარა', feeGel: 200, sortOrder: 10, examples: 'ბათუმი, ქობულეთი' },
+  { name: 'გურია', feeGel: 200, sortOrder: 20, examples: 'ოზურგეთი' },
+  { name: 'იმერეთი', feeGel: 200, sortOrder: 30, examples: 'ქუთაისი, ზესტაფონი' },
+  { name: 'კახეთი', feeGel: 200, sortOrder: 40, examples: 'თელავი, სიღნაღი, გურჯაანი' },
+  { name: 'მცხეთა-მთიანეთი', feeGel: 200, sortOrder: 50, examples: 'მცხეთა, დუშეთი' },
+  { name: 'ქვემო ქართლი', feeGel: 200, sortOrder: 60, examples: 'რუსთავი, მარნეული' },
+  { name: 'რაჭა-ლეჩხუმი და ქვემო სვანეთი', feeGel: 200, sortOrder: 70, examples: 'ამბროლაური' },
+  { name: 'სამეგრელო-ზემო სვანეთი', feeGel: 200, sortOrder: 80, examples: 'ზუგდიდი, ფოთი, მესტია' },
+  { name: 'სამცხე-ჯავახეთი', feeGel: 200, sortOrder: 90, examples: 'ახალციხე, ბორჯომი' },
+  { name: 'შიდა ქართლი', feeGel: 200, sortOrder: 100, examples: 'გორი, ხაშური' },
+]
+
+async function seedDeliveryZones(payload: Payload): Promise<void> {
+  for (const zone of DELIVERY_ZONES) {
+    const slug = slugify(zone.name)
+    const { docs } = await payload.find({
+      collection: 'delivery-zones',
+      where: { slug: { equals: slug } },
+      limit: 1,
+      overrideAccess: true,
+    })
+    if (docs[0]) continue
+    await payload.create({
+      collection: 'delivery-zones',
+      data: { name: zone.name, slug, examples: zone.examples, feeGel: zone.feeGel, sortOrder: zone.sortOrder },
+      overrideAccess: true,
+      context: SEED_CONTEXT,
+    })
+  }
+}
+
+export async function runSeed(payload: Payload): Promise<void> {
+  const sentinelMode = process.env.SEED_SENTINEL === '1'
+
+  await ensureAdmin(payload)
+
+  const bellsId = await upsertCategory(payload, 'ზარები')
+  const churchBellsId = await upsertCategory(payload, 'საეკლესიო ზარები', bellsId)
+  const candlesticksId = await upsertCategory(payload, 'შანდლები')
+  const vesselsId = await upsertCategory(payload, 'ჭურჭელი')
+
+  await ensureExchangeRate(payload)
+  const supplierId = await upsertSupplier(payload, sentinelMode)
+
+  await seedProduct(
+    payload,
+    {
+      title: 'საეკლესიო ზარი „მთავარანგელოზი“',
+      categoryId: churchBellsId,
+      tier: 'flagship',
+      featured: true,
+      galleryCount: 4,
+      withDocument: true,
+      variants: [
+        {
+          title: 'მოოქროვილი · 50 კგ',
+          coating: 'gilding',
+          weightKg: 50,
+          diameterMm: 420,
+          heightMm: 480,
+          leadTimeText: '30–45 დღე',
+          costRub: 800_000,
+          logisticsGel: 300,
+        },
+        {
+          title: 'დაფარვის გარეშე · 50 კგ',
+          coating: 'none',
+          weightKg: 50,
+          diameterMm: 420,
+          heightMm: 480,
+          leadTimeText: '30–45 დღე',
+          costRub: 650_000,
+          logisticsGel: 300,
+        },
+      ],
+    },
+    supplierId,
+    sentinelMode,
+  )
+
+  await seedProduct(
+    payload,
+    {
+      title: 'შანდალი „კეთილი“',
+      categoryId: candlesticksId,
+      tier: 'flagship',
+      featured: false,
+      galleryCount: 4,
+      variants: [
+        {
+          title: 'მოვერცხლილი',
+          coating: 'silvering',
+          size: 'H 1200 მმ',
+          leadTimeText: '14–21 დღე',
+          costRub: 300_000,
+          logisticsGel: 150,
+        },
+      ],
+    },
+    supplierId,
+    sentinelMode,
+  )
+
+  await seedProduct(
+    payload,
+    {
+      title: 'ბარძიმი „წმინდა“',
+      categoryId: vesselsId,
+      tier: 'standard',
+      galleryCount: 1,
+      variants: [
+        {
+          title: 'სტანდარტული',
+          coating: 'none',
+          leadTimeText: '7–14 დღე',
+          costRub: 150_000,
+          logisticsGel: 80,
+        },
+      ],
+    },
+    supplierId,
+    sentinelMode,
+  )
+
+  const { docs: bellDocs } = await payload.find({
+    collection: 'products',
+    where: { slug: { equals: slugify('საეკლესიო ზარი „მთავარანგელოზი“') } },
+    limit: 1,
+    overrideAccess: true,
+  })
+  if (bellDocs[0]) await seedPortfolio(payload, bellDocs[0].id)
+
+  await seedDeliveryZones(payload)
+}
+
+/**
+ * Reverses runSeed — for int tests only (see the comment on CATEGORY_NAMES
+ * above). Never used by `pnpm seed` itself. Best-effort: `tbilisi` can't be
+ * deleted (ADR 0015 guard) and is left in place, same as every other test
+ * file already tolerates.
+ */
+export async function teardownSeed(payload: Payload): Promise<void> {
+  for (const title of PRODUCT_TITLES) {
+    const { docs } = await payload.find({
+      collection: 'products',
+      where: { slug: { equals: slugify(title) } },
+      limit: 1,
+      overrideAccess: true,
+    })
+    const product = docs[0]
+    if (!product) continue
+    const { docs: variants } = await payload.find({
+      collection: 'variants',
+      where: { product: { equals: product.id } },
+      limit: 0,
+      overrideAccess: true,
+    })
+    for (const variant of variants) {
+      await payload
+        .delete({ collection: 'costings', where: { variant: { equals: variant.id } }, overrideAccess: true })
+        .catch(() => undefined)
+    }
+    await payload.delete({ collection: 'variants', where: { product: { equals: product.id } }, overrideAccess: true })
+    await payload.delete({ collection: 'products', id: product.id, overrideAccess: true })
+  }
+
+  const { docs: portfolioDocs } = await payload.find({
+    collection: 'portfolio',
+    where: { slug: { equals: slugify(PORTFOLIO_CHURCH) } },
+    limit: 1,
+    overrideAccess: true,
+  })
+  if (portfolioDocs[0]) await payload.delete({ collection: 'portfolio', id: portfolioDocs[0].id, overrideAccess: true })
+
+  for (const name of [...CATEGORY_NAMES].reverse()) {
+    const { docs } = await payload.find({
+      collection: 'categories',
+      where: { slug: { equals: slugify(name) } },
+      limit: 1,
+      overrideAccess: true,
+    })
+    if (docs[0]) await payload.delete({ collection: 'categories', id: docs[0].id, overrideAccess: true }).catch(() => undefined)
+  }
+
+  const { docs: supplierDocs } = await payload.find({
+    collection: 'suppliers',
+    where: { name: { in: [SEED_SUPPLIER_NAME, SENTINEL.supplierName] } },
+    overrideAccess: true,
+  })
+  for (const supplier of supplierDocs) {
+    await payload.delete({ collection: 'suppliers', id: supplier.id, overrideAccess: true }).catch(() => undefined)
+  }
+
+  await payload
+    .delete({ collection: 'exchange-rates', where: { source: { equals: 'seed' } }, overrideAccess: true })
+    .catch(() => undefined)
+
+  for (const zone of DELIVERY_ZONES) {
+    if (zone.name === 'თბილისი') continue
+    const { docs } = await payload.find({
+      collection: 'delivery-zones',
+      where: { slug: { equals: slugify(zone.name) } },
+      limit: 1,
+      overrideAccess: true,
+    })
+    if (docs[0]) await payload.delete({ collection: 'delivery-zones', id: docs[0].id, overrideAccess: true }).catch(() => undefined)
+  }
+}
+
+async function main(): Promise<void> {
+  const payload = await getPayload({ config })
+  await runSeed(payload)
+  console.log('seed: done')
+  process.exit(0)
+}
+
+// Only run as a CLI script — tests import `runSeed` directly. Compares via
+// pathToFileURL (not a raw `file://` template) because the repo path has
+// non-ASCII characters (TECH-STACK.md §7 "ქართული გზა"): import.meta.url
+// percent-encodes them, a plain template string does not.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error('seed failed', error)
+    process.exit(1)
+  })
+}

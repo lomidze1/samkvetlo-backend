@@ -2,6 +2,7 @@ import type { CollectionConfig } from 'payload'
 
 import { isAdmin } from '../access/isAdmin'
 import { publicRead } from '../access/publicRead'
+import { revalidateAfterChange, revalidateAfterDelete } from './hooks/revalidate'
 
 // Architecture §9: the fixed set of static content pages (rich text).
 // A general CMS-style page tree isn't needed for these five.
@@ -27,6 +28,10 @@ export const Pages: CollectionConfig = {
     create: isAdmin,
     update: isAdmin,
     delete: isAdmin,
+  },
+  hooks: {
+    afterChange: [revalidateAfterChange(['pages'])],
+    afterDelete: [revalidateAfterDelete(['pages'])],
   },
   fields: [
     {

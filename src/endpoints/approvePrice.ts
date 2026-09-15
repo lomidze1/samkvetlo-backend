@@ -1,4 +1,12 @@
-import { addDataAndFileToRequest, APIError, type Endpoint, type PayloadRequest } from 'payload'
+import {
+  addDataAndFileToRequest,
+  APIError,
+  commitTransaction,
+  type Endpoint,
+  initTransaction,
+  killTransaction,
+  type PayloadRequest,
+} from 'payload'
 
 import { ka } from '../i18n/ka'
 
@@ -14,10 +22,11 @@ function parseBody(req: PayloadRequest): ApproveBody {
   if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0) {
     throw new APIError(ka.server.pricing.priceRequired, 400)
   }
+  const reason = typeof data.reason === 'string' ? data.reason.trim() : undefined
   return {
     price,
     overrideRed: typeof data.overrideRed === 'boolean' ? data.overrideRed : undefined,
-    reason: typeof data.reason === 'string' ? data.reason : undefined,
+    reason: reason && reason.length > 0 ? reason : undefined,
   }
 }
 
@@ -46,63 +55,74 @@ export const approvePriceEndpoint: Endpoint = {
 
     const { price, overrideRed, reason } = parseBody(req)
 
-    const costing = await req.payload.findByID({
-      collection: 'costings',
-      id: costingId,
-      depth: 0,
-      overrideAccess: true,
-      req,
-    })
+    // Both updates below must land together (code review finding on
+    // T1.1–T1.8): a costing-write failure must not leave the variant price
+    // changed. Every payload.* call below carries `req`, so the Postgres
+    // adapter runs them against this same transaction.
+    const shouldCommit = await initTransaction(req)
+    try {
+      const costing = await req.payload.findByID({
+        collection: 'costings',
+        id: costingId,
+        depth: 0,
+        overrideAccess: true,
+        req,
+      })
 
-    if (costing.indicator === 'red' && !overrideRed) {
-      throw new APIError(ka.server.pricing.redNeedsOverride, 400)
+      if (costing.indicator === 'red' && !overrideRed) {
+        throw new APIError(ka.server.pricing.redNeedsOverride, 400)
+      }
+      if (overrideRed && !reason) {
+        throw new APIError(ka.server.pricing.redNeedsReason, 400)
+      }
+
+      const variantId = costing.variant as number | string
+      const variant = await req.payload.findByID({
+        collection: 'variants',
+        id: variantId,
+        depth: 0,
+        overrideAccess: true,
+        req,
+      })
+
+      await req.payload.update({
+        collection: 'variants',
+        id: variantId,
+        data: { price, priceStatus: 'approved' },
+        overrideAccess: true,
+        req,
+      })
+
+      const now = new Date().toISOString()
+      await req.payload.update({
+        collection: 'costings',
+        id: costingId,
+        data: {
+          proposedPriceGel: price,
+          approvedBy: req.user.id,
+          approvedAt: now,
+          priceHistory: [
+            ...(costing.priceHistory ?? []),
+            {
+              from: typeof variant.price === 'number' ? variant.price : null,
+              to: price,
+              by: req.user.id,
+              at: now,
+              reason,
+              rateDate: costing.rateDate,
+              auto: false,
+            },
+          ],
+        },
+        overrideAccess: true,
+        req,
+      })
+
+      if (shouldCommit) await commitTransaction(req)
+      return Response.json({ ok: true, price, priceStatus: 'approved' })
+    } catch (error) {
+      await killTransaction(req)
+      throw error
     }
-    if (overrideRed && !reason) {
-      throw new APIError(ka.server.pricing.redNeedsReason, 400)
-    }
-
-    const variantId = costing.variant as number | string
-    const variant = await req.payload.findByID({
-      collection: 'variants',
-      id: variantId,
-      depth: 0,
-      overrideAccess: true,
-      req,
-    })
-
-    await req.payload.update({
-      collection: 'variants',
-      id: variantId,
-      data: { price, priceStatus: 'approved' },
-      overrideAccess: true,
-      req,
-    })
-
-    const now = new Date().toISOString()
-    await req.payload.update({
-      collection: 'costings',
-      id: costingId,
-      data: {
-        proposedPriceGel: price,
-        approvedBy: req.user.id,
-        approvedAt: now,
-        priceHistory: [
-          ...(costing.priceHistory ?? []),
-          {
-            from: typeof variant.price === 'number' ? variant.price : null,
-            to: price,
-            by: req.user.id,
-            at: now,
-            reason,
-            rateDate: costing.rateDate,
-            auto: false,
-          },
-        ],
-      },
-      overrideAccess: true,
-      req,
-    })
-
-    return Response.json({ ok: true, price, priceStatus: 'approved' })
   },
 }

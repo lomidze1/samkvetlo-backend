@@ -50,9 +50,14 @@ export function ApprovePriceButton() {
           reason: needsOverride ? reason.trim() : undefined,
         }),
       })
-      const json = (await res.json().catch(() => null)) as { error?: { code?: string } } | null
+      // Payload serializes a thrown APIError as { errors: [{ message }] }
+      // (see formatErrors in payload/dist/utilities/formatErrors.js), not
+      // { error: { code } } — reading the latter silently swallowed the
+      // real Georgian message (e.g. the 🔴 override reason requirement)
+      // behind the generic fallback below (code review finding, T1.1–T1.8).
+      const json = (await res.json().catch(() => null)) as { errors?: { message?: string }[] } | null
       if (!res.ok) {
-        toast.error(json?.error?.code ?? 'დადასტურება ჩავარდა')
+        toast.error(json?.errors?.[0]?.message ?? 'დადასტურება ჩავარდა')
         return
       }
       toast.success('ფასი დადასტურდა')

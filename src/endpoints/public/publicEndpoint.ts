@@ -20,6 +20,13 @@ function errorResponse(code: string, status: number): Response {
   return Response.json(body, { status })
 }
 
+/** Thrown by a handler to produce a 404 (e.g. an unknown slug) — publicEndpoint catches it. */
+export class PublicNotFoundError extends Error {
+  constructor() {
+    super('err.notFound')
+  }
+}
+
 /**
  * Wraps a /api/public/* handler with service-token auth and output validation
  * (ADR 0005 layer 3, ADR 0012 §3-4). The handler's return value is checked
@@ -40,7 +47,16 @@ export function publicEndpoint<Output extends ZodType>(
         return errorResponse('err.forbidden', 403)
       }
 
-      const result = await config.handler(req)
+      let result: z.infer<Output>
+      try {
+        result = await config.handler(req)
+      } catch (err) {
+        if (err instanceof PublicNotFoundError) {
+          return errorResponse('err.notFound', 404)
+        }
+        throw err
+      }
+
       const parsed = config.output.safeParse(result)
       if (!parsed.success) {
         req.payload.logger.error(

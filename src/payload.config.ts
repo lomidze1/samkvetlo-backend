@@ -19,9 +19,16 @@ import { ExchangeRates } from './collections/ExchangeRates'
 import { Orders } from './collections/Orders'
 import { Portfolio } from './collections/Portfolio'
 import { Pages } from './collections/Pages'
+import { DeliveryZones } from './collections/DeliveryZones'
 import { PricingSettings } from './globals/PricingSettings'
 import { SiteSettings } from './globals/SiteSettings'
 import { healthEndpoint } from './endpoints/public/health'
+import { siteSettingsEndpoint } from './endpoints/public/siteSettings'
+import { categoriesEndpoint } from './endpoints/public/categories'
+import { productsListEndpoint, productBySlugEndpoint } from './endpoints/public/products'
+import { pageBySlugEndpoint } from './endpoints/public/pages'
+import { portfolioListEndpoint, portfolioBySlugEndpoint } from './endpoints/public/portfolio'
+import { deliveryZonesEndpoint } from './endpoints/public/deliveryZones'
 import { cronRatesEndpoint } from './endpoints/cronRates'
 
 const filename = fileURLToPath(import.meta.url)
@@ -67,6 +74,11 @@ if (process.env.S3_BUCKET) {
 }
 
 export default buildConfig({
+  // No anonymous usage beacon to a third party not covered by any ADR —
+  // also keeps tests that stub the global `fetch` to assert on our own
+  // revalidate webhook (T1.11) from also catching Payload's own telemetry
+  // call.
+  telemetry: false,
   admin: {
     user: Users.slug,
     importMap: {
@@ -95,6 +107,7 @@ export default buildConfig({
     Orders,
     Portfolio,
     Pages,
+    DeliveryZones,
   ],
   globals: [PricingSettings, SiteSettings],
   editor: lexicalEditor(),
@@ -102,7 +115,18 @@ export default buildConfig({
   serverURL: process.env.BACKEND_URL,
   cors: [],
   csrf: [process.env.BACKEND_URL].filter((value): value is string => Boolean(value)),
-  endpoints: [healthEndpoint, cronRatesEndpoint],
+  endpoints: [
+    healthEndpoint,
+    siteSettingsEndpoint,
+    categoriesEndpoint,
+    productsListEndpoint,
+    productBySlugEndpoint,
+    pageBySlugEndpoint,
+    portfolioListEndpoint,
+    portfolioBySlugEndpoint,
+    deliveryZonesEndpoint,
+    cronRatesEndpoint,
+  ],
   graphQL: {
     disable: true,
   },

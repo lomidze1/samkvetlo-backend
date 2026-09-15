@@ -6,7 +6,10 @@ import { renameUploadedFile } from './hooks/renameUpload'
 import { assertAllowedFileType } from './hooks/validateFileType'
 
 // ADR 0013 §6: product certificates/passports (PDF) and bell sound (MP3/M4A).
-const PUBLIC_FILE_MIME_TYPES = ['application/pdf', 'audio/mpeg', 'audio/mp4'] as const
+// audio/x-m4a: what file-type 22.1.0 actually detects for M4A (see
+// validateFileType.ts) — audio/mp4 is kept too for any M4A variant that
+// detects that way.
+const PUBLIC_FILE_MIME_TYPES = ['application/pdf', 'audio/mpeg', 'audio/mp4', 'audio/x-m4a'] as const
 
 export const PublicFiles: CollectionConfig = {
   slug: 'public-files',

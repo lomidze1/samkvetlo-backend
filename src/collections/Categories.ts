@@ -3,6 +3,7 @@ import type { CollectionConfig } from 'payload'
 import { isAdmin } from '../access/isAdmin'
 import { publicRead } from '../access/publicRead'
 import { slugify } from '../lib/translit'
+import { revalidateAfterChange, revalidateAfterDelete } from './hooks/revalidate'
 
 // T1.2: routes that a category slug must never collide with.
 export const PROTECTED_SLUGS = [
@@ -47,6 +48,8 @@ export const Categories: CollectionConfig = {
         return data
       },
     ],
+    afterChange: [revalidateAfterChange(['catalog'])],
+    afterDelete: [revalidateAfterDelete(['catalog'])],
   },
   fields: [
     {

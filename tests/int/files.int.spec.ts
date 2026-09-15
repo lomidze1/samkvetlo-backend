@@ -73,6 +73,24 @@ describe('public-files / private-files (T1.1, ADR 0005 layer 1+4 / ADR 0013 §1)
     ).rejects.toMatchObject({ status: 415 })
   })
 
+  // Code review fix (T1.1–T1.8): file-type 22.1.0 detects an M4A's magic
+  // bytes as audio/x-m4a, which wasn't on public-files' allowlist — every
+  // real M4A (the bell sound upload) got rejected with 415.
+  it('public-files: accepts an M4A (file-type detects it as audio/x-m4a)', async () => {
+    const m4a = await loadFixture('sample.m4a')
+    const doc = await payload.create({
+      collection: 'public-files',
+      data: {},
+      file: { data: m4a, mimetype: 'audio/mp4', name: 'zzsent-bell.m4a', size: m4a.length },
+    })
+    cleanup.push(async () => {
+      await payload.delete({ collection: 'public-files', id: doc.id })
+    })
+
+    expect(doc.filename).not.toMatch(/zzsent/i)
+    expect(doc.filename).toMatch(/^[0-9a-f-]{36}\.m4a$/)
+  })
+
   it('private-files: renames the uploaded PDF the same way', async () => {
     const pdf = await loadFixture('sample.pdf')
     const doc = await payload.create({

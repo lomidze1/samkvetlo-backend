@@ -3,6 +3,7 @@ import type { GlobalConfig } from 'payload'
 import { isAdmin } from '../access/isAdmin'
 import { isAdminField } from '../access/isAdminField'
 import { publicRead } from '../access/publicRead'
+import { revalidateGlobalAfterChange } from '../collections/hooks/revalidate'
 
 // ADR 0007/0012 §3: public contact/social fields the storefront needs
 // (read by everyone, incl. via /api/public/site-settings later, T1.9) next
@@ -16,6 +17,9 @@ export const SiteSettings: GlobalConfig = {
     // notifyCustomer/shareLinkTtlDays from an anonymous read below.
     read: publicRead,
     update: isAdmin,
+  },
+  hooks: {
+    afterChange: [revalidateGlobalAfterChange(['settings'])],
   },
   fields: [
     { name: 'phone', type: 'text', label: 'ტელეფონი' },

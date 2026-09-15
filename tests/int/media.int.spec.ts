@@ -134,6 +134,30 @@ describe('media collection (T1.1, ADR 0005 layer 4 / ADR 0013)', () => {
     ).rejects.toMatchObject({ status: 400 })
   })
 
+  // Code review fix (T1.1–T1.8): re-encoding without .rotate() drops the
+  // EXIF Orientation tag but keeps the *stored* (pre-rotation) pixel grid,
+  // so a portrait phone photo saved with Orientation=6 (rotate 90° CW to
+  // display correctly) came out sideways once the tag telling viewers to
+  // rotate it was gone.
+  it('bakes in EXIF Orientation before stripping metadata, so a sideways-stored photo ends up portrait', async () => {
+    const data = await loadFixture('orientation-6-landscape.jpg')
+    const sourceMeta = await sharp(data).metadata()
+    expect(sourceMeta.orientation).toBe(6)
+    expect(sourceMeta.width).toBeGreaterThan(sourceMeta.height ?? 0)
+
+    const doc = await payload.create({
+      collection: 'media',
+      data: { alt: 'ტესტის ფოტო (orientation)' },
+      file: { data, mimetype: 'image/jpeg', name: 'orientation.jpg', size: data.length },
+    })
+    createdMediaIds.push(doc.id)
+
+    const originalBuffer = await fs.readFile(path.join(MEDIA_DIR, doc.filename!))
+    const originalMeta = await sharp(originalBuffer).metadata()
+    expect(originalMeta.orientation).toBeUndefined()
+    expect(originalMeta.width).toBeLessThan(originalMeta.height ?? 0)
+  })
+
   it('rejects a file whose magic bytes do not match its extension (PDF renamed to .jpg) with 415', async () => {
     const data = await loadFixture('fake-pdf-as-jpg.jpg')
     await expect(

@@ -23,7 +23,12 @@ export async function stripImageMetadata(req: PayloadRequest, extension: string)
   if (!req.file || !IMAGE_EXTENSIONS.has(extension)) return
 
   const format = extension === 'jpg' ? 'jpeg' : extension === 'png' ? 'png' : 'webp'
-  const reencoded = await sharp(req.file.data).toFormat(format).toBuffer()
+  // .rotate() with no args reads the EXIF Orientation tag and bakes it into
+  // the pixel data (swapping width/height for a 90°/270° rotation) before
+  // toFormat() strips all metadata below — without it, a portrait phone
+  // photo stored with Orientation=6 comes out sideways once the tag that
+  // told viewers to rotate it is gone (code review finding on T1.1–T1.8).
+  const reencoded = await sharp(req.file.data).rotate().toFormat(format).toBuffer()
 
   req.file.data = reencoded
   req.file.size = reencoded.length

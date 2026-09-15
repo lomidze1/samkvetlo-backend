@@ -80,6 +80,7 @@ export interface Config {
     orders: Order;
     portfolio: Portfolio;
     pages: Page;
+    'delivery-zones': DeliveryZone;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -104,6 +105,7 @@ export interface Config {
     orders: OrdersSelect<false> | OrdersSelect<true>;
     portfolio: PortfolioSelect<false> | PortfolioSelect<true>;
     pages: PagesSelect<false> | PagesSelect<true>;
+    'delivery-zones': DeliveryZonesSelect<false> | DeliveryZonesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -614,6 +616,10 @@ export interface Order {
 export interface Portfolio {
   id: number;
   church: string;
+  /**
+   * ავტომატურად ივსება ეკლესიის სახელიდან
+   */
+  slug?: string | null;
   city?: string | null;
   photos: (number | Media)[];
   products?: (number | Product)[] | null;
@@ -645,6 +651,39 @@ export interface Page {
     };
     [k: string]: unknown;
   };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "delivery-zones".
+ */
+export interface DeliveryZone {
+  id: number;
+  /**
+   * „თბილისი“, „აჭარა“…
+   */
+  name: string;
+  /**
+   * ავტომატურად ივსება სახელიდან, შემდეგ ხელით შეცვლადია
+   */
+  slug?: string | null;
+  /**
+   * „ბათუმი, ქობულეთი…“ — ჩანს select-ის ოფციაში
+   */
+  examples?: string | null;
+  /**
+   * მთელი ლარი. თბილისი = 0
+   */
+  feeGel: number;
+  /**
+   * თბილისი = 0
+   */
+  sortOrder?: number | null;
+  /**
+   * გამორთული ზონა საიტზე არ ჩანს და შეკვეთაში არ მიიღება
+   */
+  active?: boolean | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -723,6 +762,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'pages';
         value: number | Page;
+      } | null)
+    | ({
+        relationTo: 'delivery-zones';
+        value: number | DeliveryZone;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -1136,6 +1179,7 @@ export interface OrdersSelect<T extends boolean = true> {
  */
 export interface PortfolioSelect<T extends boolean = true> {
   church?: T;
+  slug?: T;
   city?: T;
   photos?: T;
   products?: T;
@@ -1152,6 +1196,20 @@ export interface PagesSelect<T extends boolean = true> {
   slug?: T;
   title?: T;
   content?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "delivery-zones_select".
+ */
+export interface DeliveryZonesSelect<T extends boolean = true> {
+  name?: T;
+  slug?: T;
+  examples?: T;
+  feeGel?: T;
+  sortOrder?: T;
+  active?: T;
   updatedAt?: T;
   createdAt?: T;
 }

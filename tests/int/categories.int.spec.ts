@@ -27,11 +27,15 @@ describe('categories collection (T1.2)', () => {
   })
 
   it('builds a tree via the parent relationship', async () => {
-    const parent = await payload.create({ collection: 'categories', data: { name: 'ზარები' } })
+    // Unique names: the seed script (T1.10) also creates a "ზარები" /
+    // "საეკლესიო ზარები" pair in this same test DB, and category slugs are
+    // unique.
+    const suffix = `${Date.now()}-${Math.random()}`
+    const parent = await payload.create({ collection: 'categories', data: { name: `ზარები ${suffix}` } })
     createdIds.push(parent.id)
     const child = await payload.create({
       collection: 'categories',
-      data: { name: 'საეკლესიო ზარები', parent: parent.id },
+      data: { name: `საეკლესიო ზარები ${suffix}`, parent: parent.id },
     })
     createdIds.push(child.id)
 

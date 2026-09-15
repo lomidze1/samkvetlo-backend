@@ -208,6 +208,54 @@ describe('costings + approve endpoint (T1.4, ADR 0006)', () => {
     ).rejects.toMatchObject({ status: 400 })
   })
 
+  // Code review fix (T1.1–T1.8): the variant and costing updates ran as two
+  // separate, un-transacted Local API calls — a costing-write failure after
+  // the variant write succeeded left the variant price changed with no
+  // matching costing record. approvePriceEndpoint now wraps both in one
+  // transaction (initTransaction/commitTransaction/killTransaction).
+  it('approve: a costing-write failure leaves the variant price unchanged', async () => {
+    await createRate()
+    const variant = await createVariantForCosting()
+    const costing = await payload.create({
+      collection: 'costings',
+      data: { variant: variant.id, costRub: 500_000, logisticsGel: 0 },
+    })
+    const admin = await createAdmin()
+
+    // Make the shared `payload.update` fail specifically for 'costings'
+    // (the second write), so the variant write is guaranteed to have
+    // already succeeded by the time the failure happens — then restore it,
+    // pass or fail.
+    const realUpdate = payload.update.bind(payload)
+    payload.update = (async (args: Parameters<Payload['update']>[0]) => {
+      if (args.collection === 'costings') {
+        throw new Error('simulated costing write failure')
+      }
+      return realUpdate(args)
+    }) as Payload['update']
+
+    try {
+      await expect(
+        callApprove(
+          fakeReq({
+            user: admin,
+            routeParams: { id: String(costing.id) },
+            data: { price: costing.suggestedPriceGel },
+          }),
+        ),
+      ).rejects.toThrow('simulated costing write failure')
+    } finally {
+      payload.update = realUpdate
+    }
+
+    const reloadedVariant = await payload.findByID({ collection: 'variants', id: variant.id, depth: 0 })
+    expect(reloadedVariant.price).not.toBe(costing.suggestedPriceGel)
+    expect(reloadedVariant.priceStatus).not.toBe('approved')
+
+    const reloadedCosting = await payload.findByID({ collection: 'costings', id: costing.id, depth: 0 })
+    expect(reloadedCosting.approvedBy).toBeFalsy()
+  })
+
   it('approve: an anonymous call (no req.user) is forbidden', async () => {
     await createRate()
     const variant = await createVariantForCosting()

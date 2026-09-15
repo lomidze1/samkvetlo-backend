@@ -1,12 +1,13 @@
 import type { CollectionConfig } from 'payload'
 
 import { isAdmin } from '../access/isAdmin'
-import { publicRead } from '../access/publicRead'
+import { publicReadVariantOfPublishedProduct } from '../access/publicReadVariantOfPublishedProduct'
 import {
   recomputeProductPricingAfterChange,
   recomputeProductPricingAfterDelete,
 } from './hooks/variantPricing'
 import { generateVariantSku } from './hooks/variantSku'
+import { revalidateAfterChange, revalidateAfterDelete } from './hooks/revalidate'
 
 // ADR 0002 §2 / _doc/design/pages.md §2 filter list — fixed in code on purpose
 // (terminology stays stable; a new coating needs a deploy).
@@ -28,15 +29,16 @@ export const Variants: CollectionConfig = {
     useAsTitle: 'title',
   },
   access: {
-    read: publicRead,
+    // ADR 0005: a variant of a still-draft product must not leak through
+    // an anonymous request either (issue found in code review of T1.1–T1.8).
+    read: publicReadVariantOfPublishedProduct,
     create: isAdmin,
     update: isAdmin,
     delete: isAdmin,
   },
   hooks: {
-    beforeValidate: [generateVariantSku],
-    afterChange: [recomputeProductPricingAfterChange],
-    afterDelete: [recomputeProductPricingAfterDelete],
+    afterChange: [generateVariantSku, recomputeProductPricingAfterChange, revalidateAfterChange(['catalog'])],
+    afterDelete: [recomputeProductPricingAfterDelete, revalidateAfterDelete(['catalog'])],
   },
   fields: [
     {

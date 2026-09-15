@@ -5,6 +5,7 @@ import { isAdmin } from '../access/isAdmin'
 import { publicRead } from '../access/publicRead'
 import { generateBlurDataURL } from './hooks/blurDataURL'
 import { renameUploadedFile, stripImageMetadata } from './hooks/renameUpload'
+import { revalidateAfterChange, revalidateAfterDelete } from './hooks/revalidate'
 import { assertAllowedFileType } from './hooks/validateFileType'
 
 // ADR 0013 §2: WebP sizes generated on upload; the loader (T2.9) resolves
@@ -70,6 +71,8 @@ export const Media: CollectionConfig = {
         renameUploadedFile(req, extension)
       },
     ],
+    afterChange: [revalidateAfterChange(['catalog'])],
+    afterDelete: [revalidateAfterDelete(['catalog'])],
   },
   fields: [
     {

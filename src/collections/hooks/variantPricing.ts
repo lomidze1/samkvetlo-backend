@@ -26,12 +26,19 @@ async function recomputeProductPricing(
     .filter((price): price is number => typeof price === 'number')
   const minPrice = prices.length > 0 ? Math.min(...prices) : null
 
-  await req.payload.update({
+  // Not payload.update(): products has versions/drafts, and update() reads
+  // the *latest* version (which may be an unpublished draft) as its base,
+  // then — since this call passes no `draft: true` — writes that base back
+  // out as the published document. On a published product with a pending
+  // draft edit, that silently publishes (or merges in) the draft (code
+  // review finding on T1.1–T1.8). db.updateOne() writes straight to the
+  // products table row by id — no version read/merge, no hooks — so it only
+  // ever touches these two denormalized columns.
+  await req.payload.db.updateOne({
     collection: 'products',
     id: productId,
     data: { minPrice, isPurchasable: minPrice !== null },
     req,
-    overrideAccess: true,
   })
 }
 
