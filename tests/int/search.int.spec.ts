@@ -95,4 +95,12 @@ describe('search (T2.8, ADR 0004 §8)', () => {
     const result = await searchPublicProducts(payload, '   ')
     expect(result.docs).toEqual([])
   })
+
+  it('treats % and _ as literal characters, not ILIKE wildcards (code review)', async () => {
+    // Unescaped, `%` alone would ILIKE-match every published product's
+    // title (`%%%` = "anything"), returning results for a query that
+    // matches nothing literally.
+    const result = await searchPublicProducts(payload, '%')
+    expect(result.docs).toEqual([])
+  })
 })

@@ -8,13 +8,22 @@ function emptyPage(): Paginated<PublicProductCard> {
   return { docs: [], page: 1, totalPages: 0, totalDocs: 0, hasNextPage: false, hasPrevPage: false, limit: PRODUCT_PAGE_SIZE }
 }
 
+const MAX_QUERY_LENGTH = 100
+
+/** Postgres's default LIKE/ILIKE escape character is backslash — escape it
+ * and the two wildcard characters so a search for e.g. `50%` or `a_b`
+ * matches those characters literally instead of as ILIKE wildcards. */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&')
+}
+
 /**
  * T2.8 (ADR 0004 §8): `ILIKE` on the product title, plus an exact-ish `like`
  * on a variant's SKU (`SMK-000123`) resolved back to its product — a search
  * for a printed SKU should find the product page, not just a bare number.
  */
 export async function searchPublicProducts(payload: Payload, q: string): Promise<Paginated<PublicProductCard>> {
-  const query = q.trim()
+  const query = escapeLike(q.trim().slice(0, MAX_QUERY_LENGTH))
   if (!query) return emptyPage()
 
   const [byTitle, matchingVariants] = await Promise.all([

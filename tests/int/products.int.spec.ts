@@ -323,4 +323,66 @@ describe('products + variants (T1.3, ADR 0002 / 0009)', () => {
     const draftVersion = await payload.findByID({ collection: 'products', id: product.id, draft: true })
     expect(draftVersion.title).toBe('დრაფტი-სახელი')
   })
+
+  it('10) publishing a pending draft edit after a price approval keeps the approved minPrice/isPurchasable', async () => {
+    // Code review finding (Phase 2): recomputeProductPricing wrote the
+    // approved price straight to the live `products` row via db.updateOne(),
+    // but never to `_products_v`'s latest row. The admin edit form always
+    // loads that latest version (`draft: true`) — stale minPrice/
+    // isPurchasable included, since they're readOnly fields the form still
+    // resubmits — so publishing *any* unrelated edit wrote the stale values
+    // back out and the product vanished from the catalog.
+    const category = await createCategory()
+    const product = await payload.create({
+      collection: 'products',
+      data: {
+        title: 'გამოსაქვეყნებელი',
+        category: category.id,
+        tier: 'standard',
+        description: EMPTY_RICH_TEXT,
+        _status: 'published',
+      },
+    })
+    productIds.push(product.id)
+
+    const { docs: variants } = await payload.find({
+      collection: 'variants',
+      where: { product: { equals: product.id } },
+    })
+    const variant = variants[0]!
+
+    await payload.update({
+      collection: 'variants',
+      id: variant.id,
+      data: { price: 6300, priceStatus: 'approved' },
+      overrideAccess: true,
+    })
+
+    // An unrelated edit, saved as a draft first (as the admin UI does).
+    await payload.update({
+      collection: 'products',
+      id: product.id,
+      data: { title: 'გამოსაქვეყნებელი (რედაქტირებული)' },
+      draft: true,
+    })
+
+    // Publishing resubmits the form's current field values — including the
+    // readOnly minPrice/isPurchasable it loaded from that draft version.
+    const draftForm = await payload.findByID({ collection: 'products', id: product.id, draft: true })
+    await payload.update({
+      collection: 'products',
+      id: product.id,
+      data: {
+        title: draftForm.title,
+        minPrice: draftForm.minPrice,
+        isPurchasable: draftForm.isPurchasable,
+        _status: 'published',
+      },
+    })
+
+    const published = await payload.findByID({ collection: 'products', id: product.id })
+    expect(published.title).toBe('გამოსაქვეყნებელი (რედაქტირებული)')
+    expect(published.minPrice).toBe(6300)
+    expect(published.isPurchasable).toBe(true)
+  })
 })

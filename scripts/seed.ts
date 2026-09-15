@@ -314,7 +314,12 @@ async function seedProduct(
         title: 'ხარისხის სერტიფიკატი',
         kind: 'certificate',
         file: publicFile.id,
-        issuer: sentinelMode ? SENTINEL.supplierName : undefined,
+        // D19 (ADR 0005/0009): a document's issuer is a public field, but a
+        // *real* supplier name still never belongs in our own dev seed data
+        // (only the sentinel fixture deliberately puts one there, to prove
+        // the exception works) — a generic certifying-body label exercises
+        // the same field/UI without naming our actual supplier.
+        issuer: sentinelMode ? SENTINEL.supplierName : 'ხარისხის სასერტიფიკაციო ორგანო',
         reviewedNoSecretInfo: true,
       },
     ]

@@ -27,4 +27,13 @@ test.describe('/api/public/* (ADR 0012)', () => {
     })
     expect(response.status()).toBe(401)
   })
+
+  // Code review (Phase 2): `coating` is a Postgres enum column — an
+  // unlisted value used to reach the DB query unvalidated and 500.
+  test('GET /api/public/products with an unlisted coating value is ignored, not a 500', async ({ request }) => {
+    const response = await request.get('http://localhost:3001/api/public/products?coating=not-a-real-coating', {
+      headers: { Authorization: `Bearer ${READ_TOKEN}` },
+    })
+    expect(response.status()).toBe(200)
+  })
 })

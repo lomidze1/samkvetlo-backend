@@ -1,7 +1,7 @@
 import type { PayloadRequest } from 'payload'
 
 import { PaginatedSchema } from '../../shared/contract/pagination'
-import { PublicProductCardSchema, PublicProductSchema, TIER_VALUES } from '../../shared/contract/product'
+import { COATING_VALUES, PublicProductCardSchema, PublicProductSchema, TIER_VALUES } from '../../shared/contract/product'
 import { getPublicProductBySlug, getPublicProductCards, type ProductListQuery } from '../../server/public/product'
 import { publicEndpoint, PublicNotFoundError } from './publicEndpoint'
 
@@ -13,6 +13,7 @@ function parseListQuery(req: PayloadRequest): ProductListQuery {
 
   const tier = params.get('tier')
   const sort = params.get('sort')
+  const coating = params.get('coating')
   const featured = params.get('featured')
   const priceMin = params.get('priceMin')
   const priceMax = params.get('priceMax')
@@ -20,7 +21,11 @@ function parseListQuery(req: PayloadRequest): ProductListQuery {
 
   return {
     category: params.get('category') ?? undefined,
-    coating: params.get('coating') ?? undefined,
+    // `coating` is a Postgres enum column (COATING_VALUES) — an unlisted
+    // value would otherwise reach the DB query and throw a 500 (code
+    // review). `size` is a plain text field, so any string is a valid
+    // (if empty-result) comparison.
+    coating: (COATING_VALUES as readonly string[]).includes(coating ?? '') ? (coating as ProductListQuery['coating']) : undefined,
     size: params.get('size') ?? undefined,
     tier: (TIER_VALUES as readonly string[]).includes(tier ?? '') ? (tier as ProductListQuery['tier']) : undefined,
     sort: (SORT_VALUES as readonly string[]).includes(sort ?? '') ? (sort as ProductListQuery['sort']) : undefined,

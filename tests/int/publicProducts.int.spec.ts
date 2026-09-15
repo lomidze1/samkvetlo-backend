@@ -150,4 +150,42 @@ describe('public product DTO (T1.9, ADR 0012 §3)', () => {
     expect(docs).toEqual([])
     expect(totalDocs).toBe(0)
   })
+
+  // Code review (Phase 2): `sort=price-asc/price-desc` (T2.4) had no test
+  // anywhere actually asserting the resulting order — the frontend e2e only
+  // checked the URL and a 200 status, and the dev seed has just one product
+  // per category, so it can't exercise ordering either. This creates its
+  // own three differently-priced products to cover the real behavior.
+  it('sort: price-asc/price-desc order products by minPrice within a category', async () => {
+    const category = await createCategory()
+    const prices = [3000, 1000, 2000]
+    const slugs: string[] = []
+    for (const price of prices) {
+      const product = await payload.create({
+        collection: 'products',
+        data: {
+          title: `DTO ფასდალაგება ${price} ${Date.now()}-${Math.random()}`,
+          category: category.id,
+          tier: 'standard',
+          description: EMPTY_RICH_TEXT,
+          _status: 'published',
+        },
+      })
+      productIds.push(product.id)
+      slugs.push(product.slug!)
+      const { docs: variants } = await payload.find({ collection: 'variants', where: { product: { equals: product.id } } })
+      await payload.update({
+        collection: 'variants',
+        id: variants[0]!.id,
+        data: { price, priceStatus: 'approved' },
+        overrideAccess: true,
+      })
+    }
+
+    const ascending = await getPublicProductCards(payload, { category: category.slug!, sort: 'price-asc' })
+    expect(ascending.docs.filter((card) => slugs.includes(card.slug)).map((card) => card.minPrice)).toEqual([1000, 2000, 3000])
+
+    const descending = await getPublicProductCards(payload, { category: category.slug!, sort: 'price-desc' })
+    expect(descending.docs.filter((card) => slugs.includes(card.slug)).map((card) => card.minPrice)).toEqual([3000, 2000, 1000])
+  })
 })

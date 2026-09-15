@@ -6,6 +6,7 @@ import { slugify } from '../lib/translit'
 import { createDefaultVariant } from './hooks/defaultVariant'
 import { validateProductPublish } from './hooks/productPublishValidation'
 import { revalidateAfterChange, revalidateAfterDelete } from './hooks/revalidate'
+import { recomputeProductPricingBeforeChange } from './hooks/variantPricing'
 
 export const Products: CollectionConfig = {
   slug: 'products',
@@ -37,6 +38,7 @@ export const Products: CollectionConfig = {
       },
       validateProductPublish,
     ],
+    beforeChange: [recomputeProductPricingBeforeChange],
     // ADR 0012 §5: catalog tag — the storefront's product list/detail pages.
     afterChange: [createDefaultVariant, revalidateAfterChange(['catalog'])],
     afterDelete: [revalidateAfterDelete(['catalog'])],

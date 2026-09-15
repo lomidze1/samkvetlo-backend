@@ -1,4 +1,34 @@
-import type { CollectionAfterChangeHook, CollectionAfterDeleteHook, Payload, PayloadRequest } from 'payload'
+import type {
+  CollectionAfterChangeHook,
+  CollectionAfterDeleteHook,
+  CollectionBeforeChangeHook,
+  Payload,
+  PayloadRequest,
+} from 'payload'
+
+/** Shared by the variant-triggered recompute and the Products beforeChange hook below. */
+async function computeProductPricing(
+  payload: Payload,
+  productId: number | string,
+  req?: PayloadRequest,
+): Promise<{ minPrice: number | null; isPurchasable: boolean }> {
+  const { docs } = await payload.find({
+    collection: 'variants',
+    where: {
+      product: { equals: productId },
+      priceStatus: { in: ['approved', 'needs-review'] },
+    },
+    limit: 0,
+    depth: 0,
+    req,
+  })
+
+  const prices = docs
+    .map((doc) => doc.price)
+    .filter((price): price is number => typeof price === 'number')
+  const minPrice = prices.length > 0 ? Math.min(...prices) : null
+  return { minPrice, isPurchasable: minPrice !== null }
+}
 
 /**
  * ADR 0002 §5: Product.minPrice/isPurchasable are denormalized from its
@@ -17,21 +47,7 @@ export async function recomputeProductPricing(
   productId: number | string,
   req?: PayloadRequest,
 ): Promise<void> {
-  const { docs } = await payload.find({
-    collection: 'variants',
-    where: {
-      product: { equals: productId },
-      priceStatus: { in: ['approved', 'needs-review'] },
-    },
-    limit: 0,
-    depth: 0,
-    req,
-  })
-
-  const prices = docs
-    .map((doc) => doc.price)
-    .filter((price): price is number => typeof price === 'number')
-  const minPrice = prices.length > 0 ? Math.min(...prices) : null
+  const data = await computeProductPricing(payload, productId, req)
 
   // Not payload.update(): products has versions/drafts, and update() reads
   // the *latest* version (which may be an unpublished draft) as its base,
@@ -40,13 +56,31 @@ export async function recomputeProductPricing(
   // draft edit, that silently publishes (or merges in) the draft (code
   // review finding on T1.1–T1.8). db.updateOne() writes straight to the
   // products table row by id — no version read/merge, no hooks — so it only
-  // ever touches these two denormalized columns.
-  await payload.db.updateOne({
-    collection: 'products',
-    id: productId,
-    data: { minPrice, isPurchasable: minPrice !== null },
-    req,
-  })
+  // ever touches these two denormalized columns, and only the *live* row.
+  await payload.db.updateOne({ collection: 'products', id: productId, data, req })
+}
+
+/**
+ * Code review (Phase 2): the live-row write above never touched
+ * `_products_v`. Every *other* write to a product — a draft autosave, then
+ * publishing it — builds a brand new version from `data` plus each field's
+ * own `defaultValue` for anything `data` doesn't include, not from the
+ * previous version's values. Since minPrice/isPurchasable are readOnly
+ * fields the admin form never resubmits, that reset them to
+ * null/false on the very next save, wiping out an already-approved price.
+ * Recomputing them here, on every create/update, makes them self-correcting
+ * on every write instead of relying on the one write that happened to
+ * approve a price.
+ */
+export const recomputeProductPricingBeforeChange: CollectionBeforeChangeHook = async ({
+  data,
+  originalDoc,
+  operation,
+  req,
+}) => {
+  if (operation !== 'update' || !originalDoc) return data
+  const pricing = await computeProductPricing(req.payload, (originalDoc as { id: number | string }).id, req)
+  return { ...data, ...pricing }
 }
 
 function productIdOf(value: unknown): number | string | undefined {
