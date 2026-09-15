@@ -9,11 +9,11 @@ import type {
   PublicVariant,
   PublicVideo,
 } from '../../shared/contract/product'
-import { toPublicCategoryRef } from './category'
+import { resolveCategorySubtreeIds, toPublicCategoryRef } from './category'
 import { toPublicImage } from './image'
 import { toRichBlocks } from './richText'
 
-const PAGE_SIZE = 24
+export const PRODUCT_PAGE_SIZE = 24
 
 export interface ProductListQuery {
   category?: string
@@ -27,12 +27,20 @@ export interface ProductListQuery {
   page?: number
 }
 
-function nonNull<T>(value: T | null): value is T {
+export function nonNull<T>(value: T | null): value is T {
   return value !== null
 }
 
 function emptyPage(page: number): Paginated<PublicProductCard> {
-  return { docs: [], page, totalPages: 0, totalDocs: 0, hasNextPage: false, hasPrevPage: false, limit: PAGE_SIZE }
+  return {
+    docs: [],
+    page,
+    totalPages: 0,
+    totalDocs: 0,
+    hasNextPage: false,
+    hasPrevPage: false,
+    limit: PRODUCT_PAGE_SIZE,
+  }
 }
 
 // D8 (see variantPricing.ts): a price stays live on the site while its
@@ -83,7 +91,7 @@ function toSoundUrl(sound: Product['sound']): string | null {
   return sound.url ?? null
 }
 
-function toPublicProductCard(product: Product): PublicProductCard | null {
+export function toPublicProductCard(product: Product): PublicProductCard | null {
   const category = toPublicCategoryRef(product.category)
   if (!product.slug || !category) return null
   const firstImage = Array.isArray(product.gallery) ? (product.gallery[0] ?? null) : null
@@ -171,16 +179,9 @@ export async function getPublicProductCards(
   if (typeof query.priceMax === 'number') and.push({ minPrice: { less_than_equal: query.priceMax } })
 
   if (query.category) {
-    const { docs: categories } = await payload.find({
-      collection: 'categories',
-      where: { slug: { equals: query.category } },
-      limit: 1,
-      depth: 0,
-      overrideAccess: true,
-    })
-    const category = categories[0]
-    if (!category) return emptyPage(page)
-    and.push({ category: { equals: category.id } })
+    const subtreeIds = await resolveCategorySubtreeIds(payload, query.category)
+    if (!subtreeIds) return emptyPage(page)
+    and.push({ category: { in: subtreeIds } })
   }
 
   if (query.coating || query.size) {
@@ -212,7 +213,7 @@ export async function getPublicProductCards(
     overrideAccess: false,
     depth: 1,
     page,
-    limit: PAGE_SIZE,
+    limit: PRODUCT_PAGE_SIZE,
     sort,
   })
 
@@ -224,6 +225,6 @@ export async function getPublicProductCards(
     totalDocs: result.totalDocs ?? docs.length,
     hasNextPage: result.hasNextPage ?? false,
     hasPrevPage: result.hasPrevPage ?? false,
-    limit: result.limit ?? PAGE_SIZE,
+    limit: result.limit ?? PRODUCT_PAGE_SIZE,
   }
 }

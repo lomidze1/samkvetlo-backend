@@ -11,8 +11,14 @@ import sharp from 'sharp'
 import { getPayload, type Payload } from 'payload'
 
 import config from '../src/payload.config'
+import { recomputeProductPricing } from '../src/collections/hooks/variantPricing'
 import { slugify } from '../src/lib/translit'
 import { SENTINEL } from '../tests/fixtures/sentinel'
+
+// Dev-only placeholder — never a real number. The owner replaces this in the
+// admin (site-settings.phone); seeding only needs a non-empty value so the
+// header utility bar, call button and contact section have something to render.
+const SEED_PLACEHOLDER_PHONE = '+995 555 00 00 00'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const FIXTURES_DIR = path.resolve(dirname, '../tests/fixtures')
@@ -79,6 +85,60 @@ async function ensureAdmin(payload: Payload): Promise<void> {
   })
   if (docs[0]) return
   await payload.create({ collection: 'users', data: { email, password }, overrideAccess: true })
+}
+
+/**
+ * The header utility bar, mobile call button and home contact section all
+ * render `null` while `site-settings.phone` is empty — which it is by
+ * default, since nothing seeded it. A fake, obviously-placeholder number
+ * lets those sections render in dev; the owner sets the real one in the
+ * admin before launch (never overwritten here once set).
+ */
+async function ensureSiteSettingsPhone(payload: Payload): Promise<void> {
+  const settings = await payload.findGlobal({ slug: 'site-settings', overrideAccess: true })
+  if (settings.phone) return
+  await payload.updateGlobal({
+    slug: 'site-settings',
+    data: { phone: SEED_PLACEHOLDER_PHONE },
+    overrideAccess: true,
+    context: SEED_CONTEXT,
+  })
+}
+
+interface StaticPageSeed {
+  slug: 'how-we-work' | 'about' | 'delivery' | 'contact' | 'privacy'
+  title: string
+  text: string
+}
+
+// T2.7 needs `pages` content to render at all; without this every static
+// route 404s in a fresh dev DB. Real copy (and the lawyer-reviewed privacy
+// text, T5.12) is the owner's/designer's job — this is just enough that the
+// page isn't empty. Idempotent: never overwrites existing (owner-edited) content.
+const STATIC_PAGES: StaticPageSeed[] = [
+  { slug: 'how-we-work', title: 'როგორ ვმუშაობთ', text: 'მარტივად და გამჭვირვალედ: შეკვეთიდან მიწოდებამდე. სრული ტექსტი მალე დაემატება.' },
+  { slug: 'about', title: 'ჩვენ შესახებ', text: 'სამკვეთლო აკეთებს დიდ ზარებს და საეკლესიო ინვენტარს შეკვეთით. სრული ტექსტი მალე დაემატება.' },
+  { slug: 'delivery', title: 'მიწოდება', text: 'თბილისში მიწოდება უფასოა. სხვა ქალაქებში — ზონის მიხედვით. დეტალები ცხრილშია.' },
+  { slug: 'contact', title: 'კონტაქტი', text: 'დაგვირეკეთ ან მოგვწერეთ — სრული საკონტაქტო ინფორმაცია მალე დაემატება.' },
+  { slug: 'privacy', title: 'კონფიდენციალურობა', text: 'ტექსტი მალე დაემატება, გადამოწმდება იურისტის მიერ (⚖️, ADR 0014 §12).' },
+]
+
+async function ensureStaticPages(payload: Payload): Promise<void> {
+  for (const page of STATIC_PAGES) {
+    const { docs } = await payload.find({
+      collection: 'pages',
+      where: { slug: { equals: page.slug } },
+      limit: 1,
+      overrideAccess: true,
+    })
+    if (docs[0]) continue
+    await payload.create({
+      collection: 'pages',
+      data: { slug: page.slug, title: page.title, content: EMPTY_RICH_TEXT(page.text) },
+      overrideAccess: true,
+      context: SEED_CONTEXT,
+    })
+  }
 }
 
 async function upsertCategory(payload: Payload, name: string, parentId?: number): Promise<number> {
@@ -223,7 +283,16 @@ async function seedProduct(
     limit: 1,
     overrideAccess: true,
   })
-  if (existing[0]) return // already fully seeded (idempotent)
+  if (existing[0]) {
+    // Already fully seeded — but still self-heal minPrice/isPurchasable in
+    // case an earlier run was interrupted between approving a variant and
+    // the recompute (a prior run of this dev DB left `bardzimi-tsminda`
+    // with isPurchasable=false despite its variant having an approved
+    // price — root cause of the "ჭურჭელი 0 ნივთი" bug: stale denormalized
+    // columns, not the catalog count query or cache).
+    await recomputeProductPricing(payload, existing[0].id)
+    return
+  }
 
   const galleryIds: number[] = []
   for (let i = 0; i < seed.galleryCount; i += 1) {
@@ -336,6 +405,11 @@ async function seedProduct(
 
     await approveVariant(payload, variantId, costing.id, costing.suggestedPriceGel!)
   }
+
+  // Belt and suspenders: the variant hooks above already recompute this, but
+  // a script that awaits sequentially (unlike a concurrent admin edit) has
+  // no reason not to double-check the final state is consistent.
+  await recomputeProductPricing(payload, product.id)
 }
 
 async function seedPortfolio(payload: Payload, productId: number): Promise<void> {
@@ -410,6 +484,8 @@ export async function runSeed(payload: Payload): Promise<void> {
   const sentinelMode = process.env.SEED_SENTINEL === '1'
 
   await ensureAdmin(payload)
+  await ensureSiteSettingsPhone(payload)
+  await ensureStaticPages(payload)
 
   const bellsId = await upsertCategory(payload, 'ზარები')
   const churchBellsId = await upsertCategory(payload, 'საეკლესიო ზარები', bellsId)
@@ -581,6 +657,15 @@ export async function teardownSeed(payload: Payload): Promise<void> {
       overrideAccess: true,
     })
     if (docs[0]) await payload.delete({ collection: 'delivery-zones', id: docs[0].id, overrideAccess: true }).catch(() => undefined)
+  }
+
+  // T2.7: ensureStaticPages's pages, so a later int test creating its own
+  // e.g. `about` page doesn't collide with a leftover from this run's
+  // unique `slug`.
+  for (const page of STATIC_PAGES) {
+    await payload
+      .delete({ collection: 'pages', where: { slug: { equals: page.slug } }, overrideAccess: true })
+      .catch(() => undefined)
   }
 }
 

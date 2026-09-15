@@ -26,6 +26,7 @@ import { healthEndpoint } from './endpoints/public/health'
 import { siteSettingsEndpoint } from './endpoints/public/siteSettings'
 import { categoriesEndpoint } from './endpoints/public/categories'
 import { productsListEndpoint, productBySlugEndpoint } from './endpoints/public/products'
+import { searchEndpoint } from './endpoints/public/search'
 import { pageBySlugEndpoint } from './endpoints/public/pages'
 import { portfolioListEndpoint, portfolioBySlugEndpoint } from './endpoints/public/portfolio'
 import { deliveryZonesEndpoint } from './endpoints/public/deliveryZones'
@@ -121,6 +122,7 @@ export default buildConfig({
     categoriesEndpoint,
     productsListEndpoint,
     productBySlugEndpoint,
+    searchEndpoint,
     pageBySlugEndpoint,
     portfolioListEndpoint,
     portfolioBySlugEndpoint,

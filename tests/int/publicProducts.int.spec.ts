@@ -110,4 +110,44 @@ describe('public product DTO (T1.9, ADR 0012 §3)', () => {
   it("getPublicProductBySlug returns null for an unknown slug (endpoint turns this into a 404)", async () => {
     expect(await getPublicProductBySlug(payload, slugify('არარსებული პროდუქტი XYZ'))).toBeNull()
   })
+
+  it('T2.4: filtering by a parent category also returns products filed under its child category', async () => {
+    const parent = await createCategory()
+    const child = await payload.create({
+      collection: 'categories',
+      data: { name: `DTO-ქვეკატ ${Date.now()}-${Math.random()}`, parent: parent.id },
+    })
+    categoryIds.push(child.id)
+
+    const product = await payload.create({
+      collection: 'products',
+      data: {
+        title: `DTO ქვეშვილი ${Date.now()}`,
+        category: child.id,
+        tier: 'standard',
+        description: EMPTY_RICH_TEXT,
+        _status: 'published',
+      },
+    })
+    productIds.push(product.id)
+    const { docs: variants } = await payload.find({ collection: 'variants', where: { product: { equals: product.id } } })
+    await payload.update({
+      collection: 'variants',
+      id: variants[0]!.id,
+      data: { price: 1000, priceStatus: 'approved' },
+      overrideAccess: true,
+    })
+
+    const { docs: byParent } = await getPublicProductCards(payload, { category: parent.slug! })
+    expect(byParent.map((card) => card.slug)).toContain(product.slug)
+
+    const { docs: byChild } = await getPublicProductCards(payload, { category: child.slug! })
+    expect(byChild.map((card) => card.slug)).toContain(product.slug)
+  })
+
+  it('an unknown category slug returns an empty page, not every product', async () => {
+    const { docs, totalDocs } = await getPublicProductCards(payload, { category: 'ვერასდროს-არსებული-კატეგორია' })
+    expect(docs).toEqual([])
+    expect(totalDocs).toBe(0)
+  })
 })

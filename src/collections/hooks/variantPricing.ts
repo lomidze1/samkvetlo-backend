@@ -1,16 +1,23 @@
-import type { CollectionAfterChangeHook, CollectionAfterDeleteHook } from 'payload'
+import type { CollectionAfterChangeHook, CollectionAfterDeleteHook, Payload, PayloadRequest } from 'payload'
 
 /**
  * ADR 0002 §5: Product.minPrice/isPurchasable are denormalized from its
  * variants, so the catalog can sort/filter by price without a join. A
  * variant only counts once it has a price and is approved (or was approved
  * and is now needs-review — the old price still shows on the site, D8).
+ *
+ * Takes `payload` rather than a hook's `req` so it can also be called from a
+ * standalone script (seed.ts) to self-heal a product whose denormalized
+ * columns drifted from its variants — e.g. a seed run that was interrupted
+ * between approving a variant and this recompute. `req` is optional and,
+ * when passed, keeps the call inside the same request/transaction as a hook.
  */
-async function recomputeProductPricing(
+export async function recomputeProductPricing(
+  payload: Payload,
   productId: number | string,
-  req: Parameters<CollectionAfterChangeHook>[0]['req'],
+  req?: PayloadRequest,
 ): Promise<void> {
-  const { docs } = await req.payload.find({
+  const { docs } = await payload.find({
     collection: 'variants',
     where: {
       product: { equals: productId },
@@ -34,7 +41,7 @@ async function recomputeProductPricing(
   // review finding on T1.1–T1.8). db.updateOne() writes straight to the
   // products table row by id — no version read/merge, no hooks — so it only
   // ever touches these two denormalized columns.
-  await req.payload.db.updateOne({
+  await payload.db.updateOne({
     collection: 'products',
     id: productId,
     data: { minPrice, isPurchasable: minPrice !== null },
@@ -55,7 +62,7 @@ export const recomputeProductPricingAfterChange: CollectionAfterChangeHook = asy
   req,
 }) => {
   const productId = productIdOf(doc.product)
-  if (productId !== undefined) await recomputeProductPricing(productId, req)
+  if (productId !== undefined) await recomputeProductPricing(req.payload, productId, req)
   return doc
 }
 
@@ -64,6 +71,6 @@ export const recomputeProductPricingAfterDelete: CollectionAfterDeleteHook = asy
   req,
 }) => {
   const productId = productIdOf(doc.product)
-  if (productId !== undefined) await recomputeProductPricing(productId, req)
+  if (productId !== undefined) await recomputeProductPricing(req.payload, productId, req)
   return doc
 }

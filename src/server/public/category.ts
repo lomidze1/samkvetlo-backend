@@ -51,3 +51,43 @@ export function toPublicCategoryRef(category: Category | number | null | undefin
   if (!category || typeof category === 'number' || !category.slug) return null
   return { slug: category.slug, name: category.name }
 }
+
+/**
+ * T2.4: `/zarebi` must list a bell filed under its child category
+ * (`საეკლესიო ზარები`), not just products assigned to `zarebi` itself —
+ * otherwise a parent category with only sub-categorized products silently
+ * shows empty (the same class of bug as the home page's "ჭურჭელი 0 ნივთი").
+ * Returns the matched category's own id plus every descendant's, or `null`
+ * for an unknown slug (the caller 404s / returns an empty page on `null`).
+ */
+export async function resolveCategorySubtreeIds(payload: Payload, slug: string): Promise<number[] | null> {
+  const { docs } = await payload.find({
+    collection: 'categories',
+    overrideAccess: true,
+    depth: 0,
+    limit: 0,
+  })
+
+  const parentIdById = new Map<number, number | null>()
+  let targetId: number | null = null
+  for (const doc of docs) {
+    parentIdById.set(doc.id, parentIdOf(doc.parent))
+    if (doc.slug === slug) targetId = doc.id
+  }
+  if (targetId === null) return null
+
+  const childrenOfId = new Map<number, number[]>()
+  for (const [id, parentId] of parentIdById) {
+    if (parentId === null) continue
+    childrenOfId.set(parentId, [...(childrenOfId.get(parentId) ?? []), id])
+  }
+
+  const ids: number[] = []
+  const stack = [targetId]
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    ids.push(id)
+    stack.push(...(childrenOfId.get(id) ?? []))
+  }
+  return ids
+}
