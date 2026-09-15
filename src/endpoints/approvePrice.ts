@@ -9,6 +9,8 @@ import {
 } from 'payload'
 
 import { ka } from '../i18n/ka'
+import { notifyRevalidate } from '../server/revalidate/notify'
+import { withRevalidateSkipped } from '../server/revalidate/withRevalidateSkipped'
 
 interface ApproveBody {
   overrideRed?: boolean
@@ -85,13 +87,20 @@ export const approvePriceEndpoint: Endpoint = {
         req,
       })
 
-      await req.payload.update({
-        collection: 'variants',
-        id: variantId,
-        data: { price, priceStatus: 'approved' },
-        overrideAccess: true,
-        req,
-      })
+      // Code review fix: this used to revalidate through Variants' own
+      // afterChange hook, which fired *before* the transaction below
+      // commits — a reader could be served a page revalidated with data
+      // that then rolls back. Silenced here; notifyRevalidate is called
+      // explicitly after commitTransaction instead.
+      await withRevalidateSkipped(req, () =>
+        req.payload.update({
+          collection: 'variants',
+          id: variantId,
+          data: { price, priceStatus: 'approved' },
+          overrideAccess: true,
+          req,
+        }),
+      )
 
       const now = new Date().toISOString()
       await req.payload.update({
@@ -119,6 +128,7 @@ export const approvePriceEndpoint: Endpoint = {
       })
 
       if (shouldCommit) await commitTransaction(req)
+      await notifyRevalidate(req.payload, ['catalog'], req.context)
       return Response.json({ ok: true, price, priceStatus: 'approved' })
     } catch (error) {
       await killTransaction(req)

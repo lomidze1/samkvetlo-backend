@@ -2,6 +2,7 @@
 // (tests/fixtures/sentinel.ts). This is the CI merge gate — see T1.10.
 // @vitest-environment node
 import { getPayload, type AccessArgs, type Payload, type PayloadRequest } from 'payload'
+import { REST_GET } from '@payloadcms/next/routes'
 import config from '@/payload.config'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -15,6 +16,7 @@ import { ExchangeRates } from '@/collections/ExchangeRates'
 import { getPublicCategories } from '@/server/public/category'
 import { getPublicSiteSettings } from '@/server/public/siteSettings'
 import { getPublicProductCards, getPublicProductBySlug } from '@/server/public/product'
+import { getPublicPageBySlug } from '@/server/public/page'
 import { getPublicPortfolio, getPublicPortfolioBySlug } from '@/server/public/portfolio'
 import { getPublicDeliveryZones } from '@/server/public/deliveryZones'
 
@@ -25,7 +27,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 let payload: Payload
 let sentinelProductSlug: string
-const cleanupIds: { collection: 'categories' | 'products' | 'public-files'; id: number | string }[] = []
+let sentinelVariantId: number
+let sentinelOrderId: number | string
+let pageSlugForSweep: string | null = null
+const cleanupIds: { collection: 'categories' | 'orders' | 'pages' | 'products' | 'public-files'; id: number | string }[] = []
 
 const READ_TOKEN = process.env.SERVICE_TOKEN_READ ?? 'dev-read-token'
 
@@ -59,7 +64,7 @@ const EMPTY_RICH_TEXT = {
  * `runSeed`'s idempotent skip (by slug) means calling it again here with
  * SEED_SENTINEL=1 would never touch (or sentinel-fy) their documents.
  */
-async function createSentinelProduct(): Promise<string> {
+async function createSentinelProduct(): Promise<{ slug: string; variantId: number }> {
   const suffix = `${Date.now()}-${Math.random()}`
   const category = await payload.create({
     collection: 'categories',
@@ -99,13 +104,98 @@ async function createSentinelProduct(): Promise<string> {
   })
   cleanupIds.push({ collection: 'products', id: product.id })
 
-  return product.slug!
+  const { docs: variants } = await payload.find({
+    collection: 'variants',
+    where: { product: { equals: product.id } },
+    limit: 1,
+    overrideAccess: true,
+  })
+
+  return { slug: product.slug!, variantId: variants[0]!.id }
+}
+
+/** Sets every SiteSettings field-access-protected field to a sentinel value. */
+async function setSentinelSiteSettings(): Promise<void> {
+  await payload.updateGlobal({
+    slug: 'site-settings',
+    data: {
+      ownerEmails: [{ email: SENTINEL.ownerEmail }],
+      ownerPhones: [{ phone: SENTINEL.ownerPhone }],
+      notifyCustomer: true,
+      shareLinkTtlDays: SENTINEL.shareLinkTtlDays,
+    },
+    overrideAccess: true,
+  })
+}
+
+async function resetSiteSettings(): Promise<void> {
+  await payload.updateGlobal({
+    slug: 'site-settings',
+    data: { ownerEmails: [], ownerPhones: [], notifyCustomer: false, shareLinkTtlDays: 90 },
+    overrideAccess: true,
+  })
+}
+
+/** An Order carrying sentinel PII in every customer-facing field (D25). */
+async function createSentinelOrder(variantId: number): Promise<number | string> {
+  const order = await payload.create({
+    collection: 'orders',
+    data: {
+      submissionId: `sentinel-order-${Date.now()}-${Math.random()}`,
+      name: SENTINEL.orderCustomerName,
+      surname: SENTINEL.orderCustomerSurname,
+      phone: SENTINEL.orderCustomerPhone,
+      church: SENTINEL.orderCustomerChurch,
+      email: SENTINEL.orderCustomerEmail,
+      comment: SENTINEL.orderCustomerName,
+      items: [
+        { variant: variantId, productTitle: 'x', variantTitle: 'x', sku: 'SMK-SENTINEL', unitPrice: 100, qty: 1 },
+      ],
+      deliveryZone: { slug: 'tbilisi', name: 'თბილისი' },
+      deliveryFeeGel: 0,
+      status: 'new',
+    },
+    overrideAccess: true,
+  })
+  return order.id
+}
+
+/** Reuses an existing page if one is already seeded (e.g. by pages.int.spec.ts); creates one otherwise. */
+async function ensurePageForSweep(): Promise<string | null> {
+  const { docs } = await payload.find({ collection: 'pages', limit: 1, overrideAccess: true })
+  if (docs[0]) return docs[0].slug
+  const page = await payload.create({
+    collection: 'pages',
+    data: { slug: 'about', title: 'ჩვენს შესახებ', content: EMPTY_RICH_TEXT },
+    overrideAccess: true,
+  })
+  cleanupIds.push({ collection: 'pages', id: page.id })
+  return page.slug
 }
 
 const SENTINEL_PATTERN = /ZZSENT|987654/
 
 function assertNoSentinel(label: string, value: unknown): void {
   expect(JSON.stringify(value), label).not.toMatch(SENTINEL_PATTERN)
+}
+
+/**
+ * D19 (ADR 0005/0009): `documents[*].issuer` is the one place a supplier
+ * name is allowed, even in the *raw* built-in REST document (it isn't
+ * field-access-restricted at all — it's simply public). Recursively drops
+ * every `documents` key before the blanket sentinel check, same as the DTO
+ * checks above strip it explicitly.
+ */
+function stripDocuments(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripDocuments)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([key]) => key !== 'documents')
+        .map(([key, entry]) => [key, stripDocuments(entry)]),
+    )
+  }
+  return value
 }
 
 function serviceRequest(
@@ -118,12 +208,28 @@ function serviceRequest(
   return { payload, headers, routeParams, url } as unknown as PayloadRequest
 }
 
-async function callEndpoint(path: string, routeParams?: Record<string, string>): Promise<Response> {
+/**
+ * `templatePath` is the endpoint's *registered* path (e.g.
+ * '/public/pages/:slug', used to find it in config.endpoints);
+ * `concreteUrlPath` is the real URL path for the request/logging.
+ */
+async function callEndpoint(
+  templatePath: string,
+  routeParams?: Record<string, string>,
+  concreteUrlPath: string = templatePath,
+): Promise<Response> {
   const config2 = await config
-  const endpoint = config2.endpoints?.find((entry) => 'path' in entry && entry.path === path)
-  if (!endpoint || !('handler' in endpoint)) throw new Error(`endpoint not found: ${path}`)
-  const req = serviceRequest(READ_TOKEN, `http://localhost:3001/api${path}`, routeParams)
+  const endpoint = config2.endpoints?.find((entry) => 'path' in entry && entry.path === templatePath)
+  if (!endpoint || !('handler' in endpoint)) throw new Error(`endpoint not found: ${templatePath}`)
+  const req = serviceRequest(READ_TOKEN, `http://localhost:3001/api${concreteUrlPath}`, routeParams)
   return endpoint.handler(req)
+}
+
+/** Payload's *built-in* REST (not /api/public/*), called anonymously (no auth at all). */
+async function callBuiltInRestAnonymously(slugSegments: string[]): Promise<Response> {
+  const handler = REST_GET(config)
+  const request = new Request(`http://localhost:3001/api/${slugSegments.join('/')}`, { method: 'GET' })
+  return handler(request, { params: Promise.resolve({ slug: slugSegments }) })
 }
 
 describe('supplier-data secrecy (ADR 0005) — T1 unit', () => {
@@ -141,11 +247,18 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
     payload = await getPayload({ config: await config })
     process.env.SEED_SENTINEL = '1'
     await runSeed(payload)
-    sentinelProductSlug = await createSentinelProduct()
+    const sentinelProduct = await createSentinelProduct()
+    sentinelProductSlug = sentinelProduct.slug
+    sentinelVariantId = sentinelProduct.variantId
+    await setSentinelSiteSettings()
+    sentinelOrderId = await createSentinelOrder(sentinelVariantId)
+    pageSlugForSweep = await ensurePageForSweep()
   })
 
   afterAll(async () => {
     delete process.env.SEED_SENTINEL
+    await resetSiteSettings()
+    await payload.delete({ collection: 'orders', id: sentinelOrderId, overrideAccess: true }).catch(() => undefined)
     for (const { collection, id } of cleanupIds) {
       await payload.delete({ collection, id, overrideAccess: true }).catch(() => undefined)
     }
@@ -153,18 +266,54 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
     await teardownSeed(payload)
   })
 
-  it('src/server/public/* exports never leak a sentinel value', async () => {
-    assertNoSentinel('categories', await getPublicCategories(payload))
-    assertNoSentinel('site-settings', await getPublicSiteSettings(payload))
-    assertNoSentinel('delivery-zones', await getPublicDeliveryZones(payload))
+  it('src/server/public/* exports never leak a sentinel value, and every DTO shape matches its key snapshot', async () => {
+    const categories = await getPublicCategories(payload)
+    assertNoSentinel('categories', categories)
+    if (categories[0]) expect(Object.keys(categories[0]).sort()).toEqual(['children', 'name', 'slug'])
+
+    const siteSettings = await getPublicSiteSettings(payload)
+    assertNoSentinel('site-settings', siteSettings)
+    expect(Object.keys(siteSettings).sort()).toEqual(['address', 'email', 'phone', 'social'])
+
+    const zones = await getPublicDeliveryZones(payload)
+    assertNoSentinel('delivery-zones', zones)
+    if (zones[0]) expect(Object.keys(zones[0]).sort()).toEqual(['examples', 'feeGel', 'name', 'slug'])
 
     const cards = await getPublicProductCards(payload, {})
     assertNoSentinel('product cards', cards)
+    expect(Object.keys(cards).sort()).toEqual([
+      'docs',
+      'hasNextPage',
+      'hasPrevPage',
+      'limit',
+      'page',
+      'totalDocs',
+      'totalPages',
+    ])
+    if (cards.docs[0]) {
+      expect(Object.keys(cards.docs[0]).sort()).toEqual([
+        'category',
+        'featured',
+        'image',
+        'isPurchasable',
+        'minPrice',
+        'slug',
+        'tier',
+        'title',
+      ])
+    }
 
     const portfolio = await getPublicPortfolio(payload)
     assertNoSentinel('portfolio list', portfolio)
     if (portfolio[0]) {
+      expect(Object.keys(portfolio[0]).sort()).toEqual(['church', 'city', 'photos', 'products', 'slug'])
       assertNoSentinel('portfolio item', await getPublicPortfolioBySlug(payload, portfolio[0].slug))
+    }
+
+    if (pageSlugForSweep) {
+      const page = await getPublicPageBySlug(payload, pageSlugForSweep)
+      assertNoSentinel('page', page)
+      if (page) expect(Object.keys(page).sort()).toEqual(['content', 'slug', 'title'])
     }
 
     // D19 exception: documents[*].issuer legitimately carries the supplier
@@ -172,6 +321,23 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
     // must be there, and *only* there).
     const sentinelProduct = await getPublicProductBySlug(payload, sentinelProductSlug)
     expect(sentinelProduct).toBeTruthy()
+    expect(Object.keys(sentinelProduct!).sort()).toEqual([
+      'category',
+      'description',
+      'documents',
+      'featured',
+      'features',
+      'gallery',
+      'isPurchasable',
+      'minPrice',
+      'slug',
+      'sound',
+      'tier',
+      'title',
+      'variants',
+      'videos',
+      'whyQuality',
+    ])
     const { documents, ...productWithoutDocuments } = sentinelProduct!
     assertNoSentinel('product detail (minus documents)', productWithoutDocuments)
     expect(documents.some((doc) => doc.issuer === SENTINEL.supplierName)).toBe(true)
@@ -185,6 +351,28 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
       const response = await callEndpoint(path)
       expect(response.status, path).toBe(200)
       assertNoSentinel(path, await response.json())
+    }
+
+    if (pageSlugForSweep) {
+      const pageResponse = await callEndpoint(
+        '/public/pages/:slug',
+        { slug: pageSlugForSweep },
+        `/public/pages/${pageSlugForSweep}`,
+      )
+      expect(pageResponse.status).toBe(200)
+      assertNoSentinel('/public/pages/:slug', await pageResponse.json())
+    }
+
+    const { docs: portfolioDocs } = await payload.find({ collection: 'portfolio', limit: 1, overrideAccess: true })
+    if (portfolioDocs[0]?.slug) {
+      const portfolioSlug = portfolioDocs[0].slug
+      const portfolioResponse = await callEndpoint(
+        '/public/portfolio/:slug',
+        { slug: portfolioSlug },
+        `/public/portfolio/${portfolioSlug}`,
+      )
+      expect(portfolioResponse.status).toBe(200)
+      assertNoSentinel('/public/portfolio/:slug', await portfolioResponse.json())
     }
 
     const listResponse = await callEndpoint('/public/products')
@@ -205,5 +393,30 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
     const { documents, ...withoutDocuments } = body
     assertNoSentinel('/public/products/:slug (minus documents)', withoutDocuments)
     expect(documents.some((doc) => doc.issuer === SENTINEL.supplierName)).toBe(true)
+  })
+
+  it('Payload\'s built-in REST, called anonymously, never leaks a sentinel value', async () => {
+    for (const slugSegments of [['products'], ['variants']]) {
+      const response = await callBuiltInRestAnonymously(slugSegments)
+      expect(response.status, slugSegments.join('/')).toBe(200)
+      // documents[*].issuer legitimately carries the sentinel supplier name
+      // here too (D19) — it isn't a DTO, so nothing strips it for us.
+      assertNoSentinel(`/api/${slugSegments.join('/')}`, stripDocuments(await response.json()))
+    }
+
+    const ordersResponse = await callBuiltInRestAnonymously(['orders'])
+    expect(ordersResponse.status).toBe(403)
+    assertNoSentinel('/api/orders (403 body)', await ordersResponse.json())
+
+    // site-settings is public-read, but ownerEmails/ownerPhones/
+    // notifyCustomer/shareLinkTtlDays are field-access-protected (ADR 0005
+    // layer 2) — this is the one built-in REST check with something to
+    // actually leak.
+    const settingsResponse = await callBuiltInRestAnonymously(['globals', 'site-settings'])
+    expect(settingsResponse.status).toBe(200)
+    const settingsBody = (await settingsResponse.json()) as Record<string, unknown>
+    assertNoSentinel('/api/globals/site-settings', settingsBody)
+    expect(settingsBody.notifyCustomer).toBeUndefined()
+    expect(settingsBody.shareLinkTtlDays).toBeUndefined()
   })
 })

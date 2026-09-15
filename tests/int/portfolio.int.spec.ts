@@ -67,4 +67,41 @@ describe('portfolio collection (T1.8)', () => {
     portfolioIds.push(item.id)
     expect(item._status).toBe('published')
   })
+
+  // Code review fix: the slug used to be recomputed from `church` on every
+  // save (unique + unconditional), so a second entry for the same church
+  // failed outright and a rename changed the URL.
+  it('two entries for the same church get slug and slug-2 (collision suffix)', async () => {
+    const first = await payload.create({
+      collection: 'portfolio',
+      data: { church: 'ეკლესია-დუბლიკატი', photos: [mediaId], consent: true },
+    })
+    portfolioIds.push(first.id)
+    const second = await payload.create({
+      collection: 'portfolio',
+      data: { church: 'ეკლესია-დუბლიკატი', photos: [mediaId], consent: true },
+    })
+    portfolioIds.push(second.id)
+
+    expect(first.slug).toBe('eklesia-dublikati')
+    expect(second.slug).toBe('eklesia-dublikati-2')
+  })
+
+  it('renaming church afterwards does not change the existing slug', async () => {
+    const item = await payload.create({
+      collection: 'portfolio',
+      data: { church: 'თავდაპირველი-სახელი', photos: [mediaId], consent: true },
+    })
+    portfolioIds.push(item.id)
+    const originalSlug = item.slug
+
+    const renamed = await payload.update({
+      collection: 'portfolio',
+      id: item.id,
+      data: { church: 'შეცვლილი-სახელი' },
+    })
+
+    expect(renamed.church).toBe('შეცვლილი-სახელი')
+    expect(renamed.slug).toBe(originalSlug)
+  })
 })

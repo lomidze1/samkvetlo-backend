@@ -1,9 +1,9 @@
-import { commitTransaction, getPayload, initTransaction, killTransaction, type Payload, type PayloadRequest } from 'payload'
+import { getPayload, type Payload, type PayloadRequest } from 'payload'
 import config from '@/payload.config'
 
 import { approvePriceEndpoint } from '@/endpoints/approvePrice'
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 let payload: Payload
 
@@ -78,23 +78,19 @@ function fakeReq(overrides: Partial<PayloadRequest>): PayloadRequest {
 }
 
 /**
- * Payload's own request dispatcher wraps every custom-endpoint call with
- * init/commit/kill transaction (so nested Local API calls that thread
- * `req` share one transaction and it always gets closed). Calling
- * `approvePriceEndpoint.handler` directly, as these tests do, bypasses that
- * wrapper — so it's replicated here to avoid leaving an open/aborted
- * transaction on the shared pg connection pool.
+ * approvePriceEndpoint.handler manages its own init/commit/killTransaction
+ * internally (code review fix, T1.1–T1.8), so calling it directly is
+ * already self-contained. (An earlier version of this helper wrapped it
+ * with a *second*, outer init/commit/kill "to replicate Payload's
+ * dispatcher" — Payload's real dispatcher for a custom root endpoint
+ * (handleEndpoints/createPayloadRequest) does not actually do that, and the
+ * extra layer made the inner initTransaction see an already-open
+ * transaction and skip its own commit, deferring the real commit until
+ * *after* the handler had already returned — silently defeating the
+ * "revalidate only after commit" fix below.)
  */
 async function callApprove(req: PayloadRequest): Promise<Response> {
-  await initTransaction(req)
-  try {
-    const response = await approvePriceEndpoint.handler(req)
-    await commitTransaction(req)
-    return response
-  } catch (error) {
-    await killTransaction(req)
-    throw error
-  }
+  return approvePriceEndpoint.handler(req)
 }
 
 describe('costings + approve endpoint (T1.4, ADR 0006)', () => {
@@ -183,6 +179,49 @@ describe('costings + approve endpoint (T1.4, ADR 0006)', () => {
     expect(updatedCosting.priceHistory).toHaveLength(1)
     expect(updatedCosting.priceHistory?.[0]?.to).toBe(costing.suggestedPriceGel)
     expect(updatedCosting.approvedBy).toBe(admin.id)
+  })
+
+  // Code review fix: the variant update revalidated through Variants' own
+  // afterChange hook *before* the transaction committed. Silenced there now
+  // (withRevalidateSkipped) and re-fired explicitly after commitTransaction.
+  // Proven by reading the variant from a *fresh, non-transactional*
+  // connection (no `req`) inside the mocked fetch call itself: if the
+  // revalidate still fired pre-commit, that read would see the old,
+  // uncommitted priceStatus (read-committed isolation).
+  it('approve: notifyRevalidate fires exactly once, after the transaction commits', async () => {
+    await createRate()
+    const variant = await createVariantForCosting()
+    const costing = await payload.create({
+      collection: 'costings',
+      data: { variant: variant.id, costRub: 500_000, logisticsGel: 0 },
+    })
+    const admin = await createAdmin()
+
+    let priceStatusWhenRevalidateFired: string | null | undefined
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      const freshRead = await payload.findByID({ collection: 'variants', id: variant.id, depth: 0, overrideAccess: true })
+      priceStatusWhenRevalidateFired = freshRead.priceStatus
+      return new Response(null, { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    try {
+      const response = await callApprove(
+        fakeReq({
+          user: admin,
+          routeParams: { id: String(costing.id) },
+          data: { price: costing.suggestedPriceGel },
+        }),
+      )
+      expect(response.status).toBe(200)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).toEqual({ tags: ['catalog'] })
+    expect(priceStatusWhenRevalidateFired).toBe('approved')
   })
 
   it('approve: a 🔴 costing without overrideRed is rejected with 400', async () => {

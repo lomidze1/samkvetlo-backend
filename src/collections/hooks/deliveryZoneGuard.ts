@@ -1,5 +1,7 @@
 import { APIError, type CollectionBeforeChangeHook, type CollectionBeforeDeleteHook } from 'payload'
 
+import { ka } from '../../i18n/ka'
+
 // ADR 0015 §1: the default zone (0 ₾, sortOrder 0) can never be deleted or
 // turned off — every other page (cart, checkout, product delivery line)
 // assumes it always exists and is active.
@@ -9,10 +11,10 @@ export const guardTbilisiUpdate: CollectionBeforeChangeHook = async ({ data, ope
   if (operation !== 'update' || !data || originalDoc?.slug !== TBILISI_SLUG) return data
 
   if (data.active === false) {
-    throw new APIError('„თბილისი“ ვერ გამოირთვება', 400)
+    throw new APIError(ka.server.deliveryZones.tbilisiCannotDeactivate, 400)
   }
   if (typeof data.slug === 'string' && data.slug !== TBILISI_SLUG) {
-    throw new APIError('„თბილისი“-ის slug ვერ შეიცვლება', 400)
+    throw new APIError(ka.server.deliveryZones.tbilisiSlugImmutable, 400)
   }
   return data
 }
@@ -25,6 +27,6 @@ export const guardTbilisiDelete: CollectionBeforeDeleteHook = async ({ id, req }
     overrideAccess: true,
   })
   if (existing.slug === TBILISI_SLUG) {
-    throw new APIError('„თბილისი“ ვერ წაიშლება', 400)
+    throw new APIError(ka.server.deliveryZones.tbilisiCannotDelete, 400)
   }
 }

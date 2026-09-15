@@ -2,7 +2,7 @@ import type { CollectionConfig } from 'payload'
 
 import { isAdmin } from '../access/isAdmin'
 import { publicReadPublished } from '../access/publicReadPublished'
-import { slugify } from '../lib/translit'
+import { generatePortfolioSlug } from './hooks/portfolioSlug'
 import { validatePortfolioPublish } from './hooks/portfolioPublishValidation'
 import { revalidateAfterChange, revalidateAfterDelete } from './hooks/revalidate'
 
@@ -28,17 +28,10 @@ export const Portfolio: CollectionConfig = {
     drafts: true,
   },
   hooks: {
-    beforeValidate: [
-      // T1.9: GET /api/public/portfolio/:slug (ADR 0012 §3) needs a stable
-      // identifier — same auto-slug-from-title trick as Categories/Products.
-      ({ data }) => {
-        if (data && typeof data.church === 'string' && data.church.length > 0) {
-          return { ...data, slug: slugify(data.church) }
-        }
-        return data
-      },
-      validatePortfolioPublish,
-    ],
+    // T1.9: GET /api/public/portfolio/:slug (ADR 0012 §3) needs a stable
+    // identifier — see generatePortfolioSlug for the once-only + collision
+    // suffix behaviour (code review fix).
+    beforeValidate: [generatePortfolioSlug, validatePortfolioPublish],
     afterChange: [revalidateAfterChange(['portfolio'])],
     afterDelete: [revalidateAfterDelete(['portfolio'])],
   },

@@ -3,6 +3,7 @@ import { getPayload, type Payload } from 'payload'
 import config from '@/payload.config'
 
 import { getPublicDeliveryZones } from '@/server/public/deliveryZones'
+import { ka } from '@/i18n/ka'
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -59,7 +60,7 @@ describe('delivery-zones collection (T1.13, ADR 0015)', () => {
     expect(docs[0]).toBeTruthy()
     await expect(
       payload.delete({ collection: 'delivery-zones', id: docs[0]!.id, overrideAccess: true }),
-    ).rejects.toMatchObject({ status: 400 })
+    ).rejects.toMatchObject({ status: 400, message: ka.server.deliveryZones.tbilisiCannotDelete })
   })
 
   it('"tbilisi" cannot be deactivated', async () => {
@@ -76,7 +77,7 @@ describe('delivery-zones collection (T1.13, ADR 0015)', () => {
         data: { active: false },
         overrideAccess: true,
       }),
-    ).rejects.toMatchObject({ status: 400 })
+    ).rejects.toMatchObject({ status: 400, message: ka.server.deliveryZones.tbilisiCannotDeactivate })
   })
 
   it('an inactive zone does not appear in the public DTO, and active ones are ordered by sortOrder', async () => {

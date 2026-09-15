@@ -10,5 +10,12 @@ export const ka = {
       needsReviewLine: (sku: string, oldPrice: number, newPrice: number) =>
         `${sku}: ${oldPrice} ₾ → ${newPrice} ₾ (შემოთავაზებული)`,
     },
+    deliveryZones: {
+      // ADR 0015 §1: the default zone can never be turned off, renamed
+      // (its slug), or deleted.
+      tbilisiCannotDeactivate: '„თბილისი“ ვერ გამოირთვება',
+      tbilisiSlugImmutable: '„თბილისი“-ის slug ვერ შეიცვლება',
+      tbilisiCannotDelete: '„თბილისი“ ვერ წაიშლება',
+    },
   },
 } as const

@@ -11,14 +11,19 @@ const TIMEOUT_MS = 3000
  * (frontend down, timeout) can never fail the admin save that triggered it;
  * the 1-hour `revalidate: 3600` fallback on every frontend fetch covers a
  * dropped webhook. `disableRevalidate` (seed script's `context`) skips the
- * request entirely.
+ * request entirely. `skipRevalidate` is narrower: it silences one hook
+ * invocation (e.g. the variant afterChange hook fired by a nested
+ * `payload.create`/`update` a caller is about to revalidate for itself
+ * anyway — createDefaultVariant, approvePrice — so a single product/price
+ * save doesn't send two requests for the same tag). Callers set it on
+ * `req.context` only for the duration of that nested call, then restore it.
  */
 export async function notifyRevalidate(
   payload: Payload,
   tags: RevalidateTag[],
-  context?: { disableRevalidate?: unknown },
+  context?: { disableRevalidate?: unknown; skipRevalidate?: unknown },
 ): Promise<void> {
-  if (context?.disableRevalidate === true) return
+  if (context?.disableRevalidate === true || context?.skipRevalidate === true) return
 
   const url = process.env.FRONTEND_REVALIDATE_URL
   const secret = process.env.REVALIDATE_SECRET

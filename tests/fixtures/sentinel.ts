@@ -22,4 +22,16 @@ export const SENTINEL = {
   costRub: 987_654.32,
   /** original filename of an uploaded file, before the rename hook (ADR 0005 layer 4). */
   filename: 'zzsent-7f3a.jpg',
+  /** site-settings.ownerEmails[].email (ADR 0005 layer 2, field-level access). */
+  ownerEmail: 'zzsent-owner-7f3a@samkvetlo.invalid',
+  /** site-settings.ownerPhones[].phone. */
+  ownerPhone: '+995500987654',
+  /** site-settings.shareLinkTtlDays — a number, so it borrows the 987654 grep pattern. */
+  shareLinkTtlDays: 987_654,
+  /** orders.name / .surname / .phone / .church / .email / .comment (PII, D25). */
+  orderCustomerName: 'ZZSENT-CUSTOMER-7f3a',
+  orderCustomerSurname: 'ZZSENT-SURNAME-7f3a',
+  orderCustomerPhone: '+995500912345',
+  orderCustomerEmail: 'zzsent-customer-7f3a@samkvetlo.invalid',
+  orderCustomerChurch: 'ZZSENT-CHURCH-7f3a',
 } as const
