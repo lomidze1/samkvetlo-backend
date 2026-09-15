@@ -173,7 +173,7 @@ async function ensurePageForSweep(): Promise<string | null> {
   return page.slug
 }
 
-const SENTINEL_PATTERN = /ZZSENT|987654/
+const SENTINEL_PATTERN = /ZZSENT|987654/i // i: email sentinels are lowercase
 
 function assertNoSentinel(label: string, value: unknown): void {
   expect(JSON.stringify(value), label).not.toMatch(SENTINEL_PATTERN)
