@@ -20,5 +20,6 @@ export async function getPublicSiteSettings(payload: Payload): Promise<PublicSit
     email: settings.email ?? null,
     address: settings.address ?? null,
     social: (settings.social ?? []).map((entry) => ({ label: entry.label, url: entry.url })),
+    configuratorEnabled: settings.configuratorEnabled ?? false,
   }
 }

@@ -8,5 +8,8 @@ export const PublicSiteSettingsSchema = z.strictObject({
   email: z.string().nullable(),
   address: z.string().nullable(),
   social: z.array(z.strictObject({ label: z.string(), url: z.string() })),
+  // ADR 0010 / T2.3: gates the home page configurator teaser. Off by
+  // default until the foundry confirms the bell SVG.
+  configuratorEnabled: z.boolean(),
 })
 export type PublicSiteSettings = z.infer<typeof PublicSiteSettingsSchema>

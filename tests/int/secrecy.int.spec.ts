@@ -273,7 +273,13 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
 
     const siteSettings = await getPublicSiteSettings(payload)
     assertNoSentinel('site-settings', siteSettings)
-    expect(Object.keys(siteSettings).sort()).toEqual(['address', 'email', 'phone', 'social'])
+    expect(Object.keys(siteSettings).sort()).toEqual([
+      'address',
+      'configuratorEnabled',
+      'email',
+      'phone',
+      'social',
+    ])
 
     const zones = await getPublicDeliveryZones(payload)
     assertNoSentinel('delivery-zones', zones)
