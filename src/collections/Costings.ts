@@ -99,5 +99,18 @@ export const Costings: CollectionConfig = {
     },
     { name: 'approvedBy', type: 'relationship', relationTo: 'users', label: 'დაადასტურა', admin: { readOnly: true } },
     { name: 'approvedAt', type: 'date', label: 'დადასტურების დრო', admin: { readOnly: true } },
+
+    // T1.4: sidebar action calling the approve endpoint above.
+    {
+      name: 'approveAction',
+      type: 'ui',
+      label: 'დადასტურება',
+      admin: {
+        position: 'sidebar',
+        components: {
+          Field: '/components/admin/ApprovePriceButton#ApprovePriceButton',
+        },
+      },
+    },
   ],
 }

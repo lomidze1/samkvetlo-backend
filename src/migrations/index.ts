@@ -1,9 +1,15 @@
 import * as migration_20260915_133239_phase1_catalog_and_pricing from './20260915_133239_phase1_catalog_and_pricing';
+import * as migration_20260915_143316_phase1_notify_orders_portfolio_pages from './20260915_143316_phase1_notify_orders_portfolio_pages';
 
 export const migrations = [
   {
     up: migration_20260915_133239_phase1_catalog_and_pricing.up,
     down: migration_20260915_133239_phase1_catalog_and_pricing.down,
-    name: '20260915_133239_phase1_catalog_and_pricing'
+    name: '20260915_133239_phase1_catalog_and_pricing',
+  },
+  {
+    up: migration_20260915_143316_phase1_notify_orders_portfolio_pages.up,
+    down: migration_20260915_143316_phase1_notify_orders_portfolio_pages.down,
+    name: '20260915_143316_phase1_notify_orders_portfolio_pages'
   },
 ];

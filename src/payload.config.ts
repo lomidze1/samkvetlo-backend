@@ -16,8 +16,13 @@ import { Variants } from './collections/Variants'
 import { Suppliers } from './collections/Suppliers'
 import { Costings } from './collections/Costings'
 import { ExchangeRates } from './collections/ExchangeRates'
+import { Orders } from './collections/Orders'
+import { Portfolio } from './collections/Portfolio'
+import { Pages } from './collections/Pages'
 import { PricingSettings } from './globals/PricingSettings'
+import { SiteSettings } from './globals/SiteSettings'
 import { healthEndpoint } from './endpoints/public/health'
+import { cronRatesEndpoint } from './endpoints/cronRates'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -70,6 +75,11 @@ export default buildConfig({
     meta: {
       titleSuffix: ' · სამკვეთლო',
     },
+    components: {
+      // T1.4: "P% დაუდასტურებელია" banner, visible only while
+      // pricing-settings.pConfirmed = false (ADR 0006).
+      beforeDashboard: ['/components/admin/PConfirmedBanner#PConfirmedBanner'],
+    },
   },
   collections: [
     Users,
@@ -82,14 +92,17 @@ export default buildConfig({
     Suppliers,
     Costings,
     ExchangeRates,
+    Orders,
+    Portfolio,
+    Pages,
   ],
-  globals: [PricingSettings],
+  globals: [PricingSettings, SiteSettings],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   serverURL: process.env.BACKEND_URL,
   cors: [],
   csrf: [process.env.BACKEND_URL].filter((value): value is string => Boolean(value)),
-  endpoints: [healthEndpoint],
+  endpoints: [healthEndpoint, cronRatesEndpoint],
   graphQL: {
     disable: true,
   },

@@ -171,5 +171,19 @@ export const Products: CollectionConfig = {
       defaultValue: false,
       admin: { readOnly: true, description: 'ავტომატურად ითვლება ვარიანტებიდან' },
     },
+
+    // ADR 0006 §"− ფასი ორ ეკრანზეა" mitigation, T1.4: link to each
+    // variant's costing (suggested ↔ current price + 🟢🟡🔴).
+    {
+      name: 'costingLinks',
+      type: 'ui',
+      label: 'ფასის კალკულაცია',
+      admin: {
+        position: 'sidebar',
+        components: {
+          Field: '/components/admin/ProductCostingLinks#ProductCostingLinks',
+        },
+      },
+    },
   ],
 }

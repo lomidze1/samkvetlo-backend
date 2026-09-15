@@ -1,4 +1,4 @@
-import { APIError, type Endpoint, type PayloadRequest } from 'payload'
+import { addDataAndFileToRequest, APIError, type Endpoint, type PayloadRequest } from 'payload'
 
 import { ka } from '../i18n/ka'
 
@@ -35,6 +35,13 @@ export const approvePriceEndpoint: Endpoint = {
     const costingId = req.routeParams?.id
     if (typeof costingId !== 'string' && typeof costingId !== 'number') {
       return Response.json({ error: { code: 'err.notFound' } }, { status: 404 })
+    }
+
+    // Payload's REST dispatcher (handleEndpoints) does not parse the request
+    // body for custom endpoints — only built-in collection operations do
+    // that. Without this, req.data stays empty for every real HTTP call.
+    if (!req.data) {
+      await addDataAndFileToRequest(req)
     }
 
     const { price, overrideRed, reason } = parseBody(req)

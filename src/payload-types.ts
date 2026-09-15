@@ -77,6 +77,9 @@ export interface Config {
     suppliers: Supplier;
     costings: Costing;
     'exchange-rates': ExchangeRate;
+    orders: Order;
+    portfolio: Portfolio;
+    pages: Page;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -98,6 +101,9 @@ export interface Config {
     suppliers: SuppliersSelect<false> | SuppliersSelect<true>;
     costings: CostingsSelect<false> | CostingsSelect<true>;
     'exchange-rates': ExchangeRatesSelect<false> | ExchangeRatesSelect<true>;
+    orders: OrdersSelect<false> | OrdersSelect<true>;
+    portfolio: PortfolioSelect<false> | PortfolioSelect<true>;
+    pages: PagesSelect<false> | PagesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -109,9 +115,11 @@ export interface Config {
   fallbackLocale: null;
   globals: {
     'pricing-settings': PricingSetting;
+    'site-settings': SiteSetting;
   };
   globalsSelect: {
     'pricing-settings': PricingSettingsSelect<false> | PricingSettingsSelect<true>;
+    'site-settings': SiteSettingsSelect<false> | SiteSettingsSelect<true>;
   };
   locale: null;
   widgets: {
@@ -490,6 +498,158 @@ export interface ExchangeRate {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "orders".
+ */
+export interface Order {
+  id: number;
+  /**
+   * ავტომატურად: SMK-2026-000123
+   */
+  number?: string | null;
+  /**
+   * იდემპოტენტობა: კლიენტზე გენერირებული UUID (ADR 0003 §5)
+   */
+  submissionId: string;
+  name: string;
+  surname: string;
+  phone: string;
+  church: string;
+  city?: string | null;
+  email?: string | null;
+  comment?: string | null;
+  /**
+   * ივსება ღამის cron-ით (D25) — ხელით არ ივსება
+   */
+  anonymizedAt?: string | null;
+  items: {
+    variant: number | Variant;
+    productTitle: string;
+    variantTitle: string;
+    sku: string;
+    unitPrice: number;
+    qty: number;
+    priceOnConfirmation?: number | null;
+    lineTotal?: number | null;
+    patriarchateLetter?: {
+      received?: boolean | null;
+      file?: (number | null) | PrivateFile;
+    };
+    id?: string | null;
+  }[];
+  /**
+   * ტექსტის snapshot — არა relationship (ADR 0015)
+   */
+  deliveryZone?: {
+    slug?: string | null;
+    name?: string | null;
+  };
+  deliveryFeeGel?: number | null;
+  /**
+   * ავტომატურად ითვლება items[]-იდან
+   */
+  itemsTotalGel?: number | null;
+  /**
+   * itemsTotalGel + deliveryFeeGel
+   */
+  totalGel?: number | null;
+  status:
+    'new' | 'contacted' | 'confirmed' | 'paid' | 'ordered-from-supplier' | 'in-transit' | 'delivered' | 'cancelled';
+  statusHistory?:
+    | {
+        from?:
+          | (
+              | 'new'
+              | 'contacted'
+              | 'confirmed'
+              | 'paid'
+              | 'ordered-from-supplier'
+              | 'in-transit'
+              | 'delivered'
+              | 'cancelled'
+            )
+          | null;
+        to:
+          | 'new'
+          | 'contacted'
+          | 'confirmed'
+          | 'paid'
+          | 'ordered-from-supplier'
+          | 'in-transit'
+          | 'delivered'
+          | 'cancelled';
+        by?: (number | null) | User;
+        at: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * D25: ანონიმიზაციის ათვლის წერტილი
+   */
+  statusChangedAt?: string | null;
+  payment?: {
+    amountGel?: number | null;
+    paidAt?: string | null;
+    receivedBy?: string | null;
+  };
+  internalNotes?: string | null;
+  supplierOrderNo?: string | null;
+  customsDeclaration?: string | null;
+  notifications?:
+    | {
+        channel: 'email' | 'sms';
+        status: 'sent' | 'failed';
+        error?: string | null;
+        at: string;
+        id?: string | null;
+      }[]
+    | null;
+  ipHash?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "portfolio".
+ */
+export interface Portfolio {
+  id: number;
+  church: string;
+  city?: string | null;
+  photos: (number | Media)[];
+  products?: (number | Product)[] | null;
+  consent?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+  _status?: ('draft' | 'published') | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "pages".
+ */
+export interface Page {
+  id: number;
+  slug: 'how-we-work' | 'about' | 'delivery' | 'contact' | 'privacy';
+  title: string;
+  content: {
+    root: {
+      type: string;
+      children: {
+        type: any;
+        version: number;
+        [k: string]: unknown;
+      }[];
+      direction: ('ltr' | 'rtl') | null;
+      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
+      indent: number;
+      version: number;
+    };
+    [k: string]: unknown;
+  };
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -551,6 +711,18 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'exchange-rates';
         value: number | ExchangeRate;
+      } | null)
+    | ({
+        relationTo: 'orders';
+        value: number | Order;
+      } | null)
+    | ({
+        relationTo: 'portfolio';
+        value: number | Portfolio;
+      } | null)
+    | ({
+        relationTo: 'pages';
+        value: number | Page;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -883,6 +1055,108 @@ export interface ExchangeRatesSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "orders_select".
+ */
+export interface OrdersSelect<T extends boolean = true> {
+  number?: T;
+  submissionId?: T;
+  name?: T;
+  surname?: T;
+  phone?: T;
+  church?: T;
+  city?: T;
+  email?: T;
+  comment?: T;
+  anonymizedAt?: T;
+  items?:
+    | T
+    | {
+        variant?: T;
+        productTitle?: T;
+        variantTitle?: T;
+        sku?: T;
+        unitPrice?: T;
+        qty?: T;
+        priceOnConfirmation?: T;
+        lineTotal?: T;
+        patriarchateLetter?:
+          | T
+          | {
+              received?: T;
+              file?: T;
+            };
+        id?: T;
+      };
+  deliveryZone?:
+    | T
+    | {
+        slug?: T;
+        name?: T;
+      };
+  deliveryFeeGel?: T;
+  itemsTotalGel?: T;
+  totalGel?: T;
+  status?: T;
+  statusHistory?:
+    | T
+    | {
+        from?: T;
+        to?: T;
+        by?: T;
+        at?: T;
+        id?: T;
+      };
+  statusChangedAt?: T;
+  payment?:
+    | T
+    | {
+        amountGel?: T;
+        paidAt?: T;
+        receivedBy?: T;
+      };
+  internalNotes?: T;
+  supplierOrderNo?: T;
+  customsDeclaration?: T;
+  notifications?:
+    | T
+    | {
+        channel?: T;
+        status?: T;
+        error?: T;
+        at?: T;
+        id?: T;
+      };
+  ipHash?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "portfolio_select".
+ */
+export interface PortfolioSelect<T extends boolean = true> {
+  church?: T;
+  city?: T;
+  photos?: T;
+  products?: T;
+  consent?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  _status?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "pages_select".
+ */
+export interface PagesSelect<T extends boolean = true> {
+  slug?: T;
+  title?: T;
+  content?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv_select".
  */
 export interface PayloadKvSelect<T extends boolean = true> {
@@ -949,6 +1223,43 @@ export interface PricingSetting {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "site-settings".
+ */
+export interface SiteSetting {
+  id: number;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  social?:
+    | {
+        label: string;
+        url: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * ADR 0010 — ჩაირთვება ქარხნის დადასტურების შემდეგ
+   */
+  configuratorEnabled?: boolean | null;
+  ownerEmails?:
+    | {
+        email: string;
+        id?: string | null;
+      }[]
+    | null;
+  ownerPhones?:
+    | {
+        phone: string;
+        id?: string | null;
+      }[]
+    | null;
+  notifyCustomer?: boolean | null;
+  shareLinkTtlDays?: number | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "pricing-settings_select".
  */
 export interface PricingSettingsSelect<T extends boolean = true> {
@@ -969,6 +1280,40 @@ export interface PricingSettingsSelect<T extends boolean = true> {
   thresholdYellowPct?: T;
   thresholdRedPct?: T;
   needsReviewPct?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "site-settings_select".
+ */
+export interface SiteSettingsSelect<T extends boolean = true> {
+  phone?: T;
+  email?: T;
+  address?: T;
+  social?:
+    | T
+    | {
+        label?: T;
+        url?: T;
+        id?: T;
+      };
+  configuratorEnabled?: T;
+  ownerEmails?:
+    | T
+    | {
+        email?: T;
+        id?: T;
+      };
+  ownerPhones?:
+    | T
+    | {
+        phone?: T;
+        id?: T;
+      };
+  notifyCustomer?: T;
+  shareLinkTtlDays?: T;
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;
