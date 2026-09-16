@@ -150,6 +150,25 @@ async function toPublicProduct(payload: Payload, product: Product): Promise<Publ
   }
 }
 
+/**
+ * T3.7 (ADR 0011 §3): resolves a product-page slug to its Payload row id,
+ * using the same public-visibility rule as getPublicProductBySlug below
+ * (overrideAccess: false — publicReadPublished, ADR 0005 — filters out
+ * drafts). An unknown or unpublished slug just returns null; the caller
+ * must never turn that into an error or otherwise reveal whether the slug
+ * exists.
+ */
+export async function resolvePublicProductId(payload: Payload, slug: string): Promise<number | null> {
+  const { docs } = await payload.find({
+    collection: 'products',
+    where: { slug: { equals: slug } },
+    overrideAccess: false,
+    depth: 0,
+    limit: 1,
+  })
+  return docs[0]?.id ?? null
+}
+
 /** ADR 0012 §3: GET /api/public/products/:slug. Returns null on a 404. */
 export async function getPublicProductBySlug(payload: Payload, slug: string): Promise<PublicProduct | null> {
   const { docs } = await payload.find({

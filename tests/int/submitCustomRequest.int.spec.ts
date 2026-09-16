@@ -17,6 +17,45 @@ let payload: Payload
 
 const requestIds: (number | string)[] = []
 const attachmentIds: (number | string)[] = []
+const productIds: (number | string)[] = []
+const categoryIds: (number | string)[] = []
+
+const EMPTY_RICH_TEXT = {
+  root: {
+    type: 'root' as const,
+    direction: null,
+    format: '' as const,
+    indent: 0,
+    version: 1 as const,
+    children: [
+      {
+        type: 'paragraph' as const,
+        direction: null,
+        format: '' as const,
+        indent: 0,
+        version: 1 as const,
+        children: [{ type: 'text' as const, detail: 0, format: 0, mode: 'normal' as const, style: '', text: 'x', version: 1 as const }],
+      },
+    ],
+  },
+}
+
+async function createProduct(status: 'draft' | 'published') {
+  const category = await payload.create({ collection: 'categories', data: { name: `მოთხ-კატ ${Date.now()}-${Math.random()}` } })
+  categoryIds.push(category.id)
+  const product = await payload.create({
+    collection: 'products',
+    data: {
+      title: `მოთხ-პროდ ${Date.now()}-${Math.random()}`,
+      category: category.id,
+      tier: 'standard',
+      description: EMPTY_RICH_TEXT,
+      _status: status,
+    },
+  })
+  productIds.push(product.id)
+  return product
+}
 
 const FIXTURES_DIR = path.resolve(__dirname, '../fixtures')
 async function loadFixture(name: string): Promise<Buffer> {
@@ -85,6 +124,13 @@ describe('submitCustomRequest (T3.7, ADR 0011 §3 + ADR 0003 §4 pipeline order)
     }
     for (const id of attachmentIds) {
       await payload.delete({ collection: 'private-files', id, overrideAccess: true }).catch(() => undefined)
+    }
+    for (const id of productIds) {
+      await payload.delete({ collection: 'variants', where: { product: { equals: id } } }).catch(() => undefined)
+      await payload.delete({ collection: 'products', id, overrideAccess: true }).catch(() => undefined)
+    }
+    for (const id of categoryIds) {
+      await payload.delete({ collection: 'categories', id, overrideAccess: true }).catch(() => undefined)
     }
   })
 
@@ -225,5 +271,46 @@ describe('submitCustomRequest (T3.7, ADR 0011 §3 + ADR 0003 §4 pipeline order)
       fakeReq({ headers: new Headers({ authorization: `Bearer ${process.env.SERVICE_TOKEN_READ}` }) }),
     )
     expect(response.status).toBe(403)
+  })
+
+  it('(10) a valid published-product slug links the request to that product', async () => {
+    const product = await createProduct('published')
+    const result = await submitCustomRequest(payload, baseInput({ product: product.slug! }), [], {
+      ipHash: 'cr-ip-10',
+      clientIp: '10.10.10.10',
+    })
+    await trackRequestAttachments(result.number)
+
+    const doc = (
+      await payload.find({ collection: 'custom-requests', where: { number: { equals: result.number } }, depth: 0, overrideAccess: true })
+    ).docs[0]!
+    expect(doc.product).toBe(product.id)
+  })
+
+  it('(11) an unknown product slug saves the request with no relationship and no error', async () => {
+    const result = await submitCustomRequest(payload, baseInput({ product: 'no-such-product-slug-xyz' }), [], {
+      ipHash: 'cr-ip-11',
+      clientIp: '11.11.11.11',
+    })
+    await trackRequestAttachments(result.number)
+
+    const doc = (
+      await payload.find({ collection: 'custom-requests', where: { number: { equals: result.number } }, depth: 0, overrideAccess: true })
+    ).docs[0]!
+    expect(doc.product ?? null).toBeNull()
+  })
+
+  it('(12) a draft (unpublished) product slug saves the request with no relationship and no error', async () => {
+    const draft = await createProduct('draft')
+    const result = await submitCustomRequest(payload, baseInput({ product: draft.slug! }), [], {
+      ipHash: 'cr-ip-12',
+      clientIp: '12.12.12.12',
+    })
+    await trackRequestAttachments(result.number)
+
+    const doc = (
+      await payload.find({ collection: 'custom-requests', where: { number: { equals: result.number } }, depth: 0, overrideAccess: true })
+    ).docs[0]!
+    expect(doc.product ?? null).toBeNull()
   })
 })

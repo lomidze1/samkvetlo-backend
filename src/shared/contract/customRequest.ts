@@ -74,7 +74,11 @@ export const CustomRequestInputSchema = z.strictObject({
   city: optionalText(60),
   email: optionalEmail(),
   category: z.enum(CUSTOM_REQUEST_CATEGORY_VALUES, { error: 'required' }),
-  product: z.number().int().positive().optional(),
+  // The public product DTO exposes only `slug` (ADR 0005 keeps internal ids
+  // out of it), so this is the one way the frontend can identify a product.
+  // submitCustomRequest resolves it to a row id; an unknown or unpublished
+  // slug is a business decision made there, not a validation error here.
+  product: optionalText(200),
   description: requiredText(2000),
   budgetText: optionalText(200),
   deadlineText: optionalText(200),

@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 import type { CustomRequest } from '../../payload-types'
 import type { CustomRequestInput, CustomRequestResult } from '../../shared/contract/customRequest'
 import { PublicHttpError } from '../../endpoints/public/publicEndpoint'
+import { resolvePublicProductId } from '../public/product'
 import { isRateLimited } from '../security/rateLimit'
 import { verifyTurnstile } from '../security/turnstile'
 import { validateAttachments, type UploadedAttachment, type ValidatedAttachment } from './attachments'
@@ -76,6 +77,12 @@ export async function submitCustomRequest(
   const validatedFiles = await validateAttachments(files)
   const attachmentIds = await createAttachmentDocs(payload, validatedFiles)
 
+  // ADR 0011 §3: `product` on the wire is a slug (the only thing the public
+  // product DTO exposes, ADR 0005) — resolve it to the row id the
+  // relationship field expects. Never surfaced as an error: an unknown or
+  // unpublished slug just means the request saves without the link.
+  const productId = input.product ? await resolvePublicProductId(payload, input.product) : null
+
   const requestData = {
     submissionId: input.submissionId,
     name: input.name,
@@ -85,7 +92,7 @@ export async function submitCustomRequest(
     city: input.city,
     email: input.email,
     category: input.category,
-    product: input.product,
+    product: productId ?? undefined,
     description: input.description,
     attachments: attachmentIds,
     budgetText: input.budgetText,
