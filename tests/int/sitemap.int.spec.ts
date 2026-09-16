@@ -134,6 +134,45 @@ describe('GET /api/public/sitemap mapper (T5.x SEO contract)', () => {
     expect(sitemap.categories.some((c) => c.path === `/${category.slug}`)).toBe(false)
   })
 
+  it('code review (ADR 0005): excludes a DRAFT product even when isPurchasable is true', async () => {
+    const suffix = `${Date.now()}-${Math.random()}`
+    const category = await payload.create({
+      collection: 'categories',
+      data: { name: `sitemap-draft-purchasable-cat-${suffix}` },
+      overrideAccess: true,
+    })
+    cleanup.push({ collection: 'categories', id: category.id })
+    // Never published — `recomputeProductPricing` denormalizes
+    // isPurchasable/minPrice onto the *live* row directly (db.updateOne,
+    // bypassing versions/drafts) whenever its variant's price changes, so a
+    // draft product's row can end up with isPurchasable: true despite
+    // `_status` staying 'draft'. The sitemap must still exclude it — this
+    // proves `publicReadPublished`'s `_status: 'published'` filter, not
+    // just the isPurchasable filter, is what's actually protecting it.
+    const product = await payload.create({
+      collection: 'products',
+      data: {
+        title: `sitemap-draft-purchasable-${suffix}`,
+        category: category.id,
+        tier: 'standard',
+        description: EMPTY_RICH_TEXT,
+        _status: 'draft',
+      },
+      overrideAccess: true,
+    })
+    cleanup.push({ collection: 'products', id: product.id })
+    await makePurchasable(product.id)
+
+    const isPurchasableNow = (
+      await payload.findByID({ collection: 'products', id: product.id, overrideAccess: true })
+    ).isPurchasable
+    expect(isPurchasableNow).toBe(true)
+
+    const sitemap = await getPublicSitemap(payload)
+    expect(sitemap.products.some((p) => p.slug === product.slug)).toBe(false)
+    expect(sitemap.categories.some((c) => c.path === `/${category.slug}`)).toBe(false)
+  })
+
   it('includes the privacy page (self-seeded, not dependent on another file having run the seed script)', async () => {
     const { docs: existing } = await payload.find({
       collection: 'pages',
