@@ -4,7 +4,7 @@
 // `@/collections/*` — this file is copied verbatim into the frontend repo.
 import { z } from 'zod'
 
-export const CONTRACT_VERSION = '2026-09-14.1'
+export const CONTRACT_VERSION = '2026-09-16.1'
 
 export const HealthSchema = z.strictObject({
   ok: z.literal(true),
