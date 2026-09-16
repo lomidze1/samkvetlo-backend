@@ -126,6 +126,12 @@ describe('scrubEvent (T5.10, ADR 0014 §11)', () => {
       otherCostsGel: 12,
       markupGel: 300,
       notes: SENTINEL.note,
+      // Round-3 follow-up: the rest of Costings' pricing internals ADR
+      // 0005 treats as secret, not just the ones `cost`/`markup` catch.
+      bufferPct: 8,
+      bankFeePct: 1.5,
+      georgianMarketPriceGel: 980,
+      suggestedPriceGel: 1015,
       // Suppliers (naming or reaching the supplier directly lets a
       // competitor route around Samkvetlo, same reason as supplierName/Url)
       supplierName: SENTINEL.supplierName,
@@ -139,6 +145,7 @@ describe('scrubEvent (T5.10, ADR 0014 §11)', () => {
       church: SENTINEL.orderCustomerChurch,
       comment: 'დარეკეთ საღამოს 6 საათის შემდეგ',
       city: 'ქუთაისი',
+      customsDeclaration: 'GE-2026-000123',
     }
     const controlField = { itemsTotalGel: 27730 }
 
@@ -196,6 +203,68 @@ describe('scrubEvent (T5.10, ADR 0014 §11)', () => {
     }
     expect(scrubEvent(asString).request?.query_string).toBeUndefined()
     expect(scrubEvent(asArray).request?.query_string).toBeUndefined()
+  })
+
+  // Round-3 follow-up: with tracesSampleRate: 0.1, a transaction event's
+  // root span (contexts.trace) and every child span (spans[]) can carry
+  // the request URL — including its query string — as plain span
+  // attributes, which redactPII's key-based redaction never inspects
+  // (the keys, e.g. "http.target", aren't PII-shaped). Attribute names
+  // confirmed against the installed SDK/Next.js, not assumed — see
+  // scrubEvent.ts's comment for exactly where each one is set.
+  it('strips the query string from http.target/http.url/url.full and drops url.query, in contexts.trace.data', () => {
+    const event: Event = {
+      contexts: {
+        trace: {
+          span_id: 'a',
+          trace_id: 'b',
+          data: {
+            'http.target': '/api/orders?where[phone][equals]=+995500123456',
+            'http.url': 'https://admin.samkvetlo.ge/api/orders?where[phone][equals]=+995500123456',
+            'url.full': 'https://admin.samkvetlo.ge/api/orders?where[phone][equals]=+995500123456',
+            'url.query': 'where[phone][equals]=+995500123456',
+            'http.method': 'GET',
+          },
+        },
+      },
+    }
+
+    const data = scrubEvent(event).contexts?.trace?.data as Record<string, unknown>
+    expect(data['http.target']).toBe('/api/orders')
+    expect(data['http.url']).toBe('https://admin.samkvetlo.ge/api/orders')
+    expect(data['url.full']).toBe('https://admin.samkvetlo.ge/api/orders')
+    expect(data['url.query']).toBeUndefined()
+    expect(data['http.method']).toBe('GET')
+    expect(JSON.stringify(data)).not.toContain('995500123456')
+  })
+
+  it('applies the same span-data scrub to every entry in spans[]', () => {
+    const event: Event = {
+      spans: [
+        {
+          data: { 'http.target': '/api/orders?where[phone][equals]=+995500123456' },
+          span_id: 'a',
+          start_timestamp: 0,
+          trace_id: 'b',
+        },
+        {
+          data: { 'url.full': 'https://samkvetlo.ge/zarebi?q=name', 'db.statement': 'select 1' },
+          span_id: 'c',
+          start_timestamp: 0,
+          trace_id: 'b',
+        },
+      ],
+    }
+
+    const scrubbed = scrubEvent(event).spans!
+    expect(scrubbed[0]!.data['http.target']).toBe('/api/orders')
+    expect(scrubbed[1]!.data['url.full']).toBe('https://samkvetlo.ge/zarebi')
+    expect(scrubbed[1]!.data['db.statement']).toBe('select 1')
+  })
+
+  it('leaves an event with no contexts.trace/spans untouched', () => {
+    const event: Event = { contexts: { runtime: { version: '22.0.0' } } }
+    expect(scrubEvent(event)).toEqual(event)
   })
 })
 

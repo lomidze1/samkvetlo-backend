@@ -14,19 +14,26 @@ import type { Breadcrumb, Event } from '@sentry/nextjs'
 // ADR 0016 says must never be stored. An allowlist can only ever be too
 // strict, never too permissive.
 const ALLOWED_HEADERS = ['user-agent', 'content-type', 'x-contract-version']
-// Code review finding #3: matched against every Costings/Suppliers/Orders
-// field that ADR 0005/D25 needs kept out of Sentry — supplier/cost/
-// logistics numbers (Costings: supplier*, cost*, logistics*, markup*,
-// notes), a supplier's public identity (Suppliers: website, contact — the
-// same reason supplierName/supplierUrl matter: naming or reaching the
+// Code review finding #3 (+ round-3 follow-up): matched against every
+// Costings/Suppliers/Orders field that ADR 0005/D25 needs kept out of
+// Sentry — supplier/cost/logistics/pricing internals (Costings: supplier*,
+// cost*, logistics*, markup*, notes, bufferPct, bankFeePct,
+// georgianMarketPriceGel, suggestedPriceGel — every number ADR 0005 treats
+// as a pricing secret, not just the ones already covered by `cost`/
+// `markup`), a supplier's public identity (Suppliers: website, contact —
+// the same reason supplierName/supplierUrl matter: naming or reaching the
 // supplier directly lets a competitor route around Samkvetlo), and
-// customer PII (Orders: name/surname/phone/email/church/comment/city).
-// No separate `sku` term: `supplierSku` is already caught by `supplier`,
-// and the only other `sku` field in the schema (orders.items[].sku, our
-// own product code) isn't a secret — every term here must independently
-// matter (tests/unit/scrub-event.test.ts proves it).
+// customer PII/secrecy (Orders: name/surname/phone/email/church/comment/
+// city/customsDeclaration — the customs paperwork carries the same church/
+// recipient details as the order itself). No separate `sku` term:
+// `supplierSku` is already caught by `supplier`, and the only other `sku`
+// field in the schema (orders.items[].sku, our own product code) isn't a
+// secret. `bankFeePct` is spelled out in full rather than a bare `fee`,
+// which would also catch `deliveryFeeGel`/`feeGel` — legitimate,
+// customer-visible order/delivery totals. Every term here must
+// independently matter (tests/unit/scrub-event.test.ts proves it).
 const PII_KEY_PATTERN =
-  /phone|email|name|surname|church|token|ownerSecret|supplier|cost|markup|logistics|notes|comment|city|website|contact/i
+  /phone|email|name|surname|church|token|ownerSecret|supplier|cost|markup|logistics|notes|comment|city|website|contact|buffer|bankFeePct|georgianMarket|suggested|customsDeclaration/i
 
 function redactPII(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
   if (Array.isArray(value)) return value.map((item) => redactPII(item, seen))
@@ -75,6 +82,49 @@ function scrubUrl(url: string | undefined): string | undefined {
   return stripQuery(redactShareLinkPath(url))
 }
 
+/**
+ * Round-3 follow-up: `tracesSampleRate: 0.1` means a transaction event's
+ * `spans[].data` and `contexts.trace.data` can carry the SAME
+ * request-URL-with-query-string problem `scrubRequest`/`stripQuery` solve
+ * for `request.url` — but `redactPII` (key-based) never inspects these,
+ * since the offending keys aren't PII-shaped, the *values* are. Confirmed
+ * against the installed SDK/Next.js rather than assumed:
+ * - `http.target` — Next.js's own request tracer sets this to the raw
+ *   `req.url` (path + query, unmodified) on every request's root span
+ *   (node_modules/next/dist/server/base-server.js).
+ * - `url.full` — a stable Sentry/OTel semantic attribute
+ *   (@sentry/core's semanticAttributes.ts).
+ * - `url.query` — a stable OTel semantic attribute, set by
+ *   @sentry/node-core's own outgoing-fetch (undici) instrumentation to the
+ *   request's query string.
+ * - `http.url` — set by @sentry/node's http integration in at least one
+ *   code path (outgoing `data:` URL requests); included for the same
+ *   reason `url.full` is, since it is a real attribute name in this SDK,
+ *   not merely a plausible-sounding one.
+ * `url.query` IS the query string, so it's dropped outright; the other
+ * three are full URLs and go through the same `scrubUrl` as `request.url`.
+ */
+const URL_BEARING_SPAN_KEYS = ['http.target', 'http.url', 'url.full']
+
+function scrubSpanData<D extends Record<string, unknown> | undefined>(data: D): D {
+  if (!data) return data
+  const result: Record<string, unknown> = { ...data }
+  for (const key of URL_BEARING_SPAN_KEYS) {
+    if (typeof result[key] === 'string') result[key] = scrubUrl(result[key] as string)
+  }
+  delete result['url.query']
+  return result as D
+}
+
+function scrubTraceContext(contexts: Event['contexts']): Event['contexts'] {
+  if (!contexts?.trace) return contexts
+  return { ...contexts, trace: { ...contexts.trace, data: scrubSpanData(contexts.trace.data) } }
+}
+
+function scrubSpans(spans: Event['spans']): Event['spans'] {
+  return spans?.map((span) => ({ ...span, data: scrubSpanData(span.data) }))
+}
+
 function scrubRequest(request: Event['request']): Event['request'] {
   if (!request) return request
   const scrubbedHeaders = request.headers
@@ -103,11 +153,13 @@ function scrubRequest(request: Event['request']): Event['request'] {
  * input or talks to the network.
  */
 export function scrubEvent<E extends Event>(event: E): E {
+  const contexts = event.contexts ? (redactPII(event.contexts) as Event['contexts']) : event.contexts
   return {
     ...event,
     request: scrubRequest(event.request),
     extra: event.extra ? (redactPII(event.extra) as Event['extra']) : event.extra,
-    contexts: event.contexts ? (redactPII(event.contexts) as Event['contexts']) : event.contexts,
+    contexts: scrubTraceContext(contexts),
+    spans: scrubSpans(event.spans),
   }
 }
 
