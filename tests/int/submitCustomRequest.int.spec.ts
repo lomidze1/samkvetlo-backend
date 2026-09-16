@@ -351,6 +351,68 @@ describe('submitCustomRequest (T3.7, ADR 0011 §3 + ADR 0003 §4 pipeline order)
     ).rejects.toBeTruthy()
   })
 
+  it('(13b) if an attachment upload fails part-way, the files already written are deleted — review follow-up', async () => {
+    const pdf = await loadFixture('sample.pdf')
+    const originalCreate = payload.create.bind(payload)
+    const createdAttachmentIds: (number | string)[] = []
+    let privateFileCreates = 0
+    const createSpy = vi.spyOn(payload, 'create').mockImplementation(async (args: Parameters<Payload['create']>[0]) => {
+      if (args.collection === 'private-files') {
+        privateFileCreates += 1
+        if (privateFileCreates === 2) throw new Error('storage down')
+        const doc = await originalCreate(args)
+        createdAttachmentIds.push(doc.id)
+        return doc
+      }
+      return originalCreate(args)
+    })
+
+    try {
+      await expect(
+        submitCustomRequest(
+          payload,
+          baseInput(),
+          [
+            { data: pdf, name: 'first.pdf' },
+            { data: pdf, name: 'second.pdf' },
+          ],
+          { ipHash: 'cr-ip-13b', clientIp: '13.13.13.14' },
+        ),
+      ).rejects.toThrow('storage down')
+    } finally {
+      createSpy.mockRestore()
+    }
+
+    expect(createdAttachmentIds).toHaveLength(1)
+    await expect(
+      payload.findByID({ collection: 'private-files', id: createdAttachmentIds[0]!, overrideAccess: true }),
+    ).rejects.toBeTruthy()
+  })
+
+  it('(13c) a failing product lookup happens before any attachment is written — review follow-up', async () => {
+    const pdf = await loadFixture('sample.pdf')
+    const originalFind = payload.find.bind(payload)
+    const findSpy = vi.spyOn(payload, 'find').mockImplementation(async (args: Parameters<Payload['find']>[0]) => {
+      if (args.collection === 'products') throw new Error('products lookup down')
+      return originalFind(args)
+    })
+    const createSpy = vi.spyOn(payload, 'create')
+
+    try {
+      await expect(
+        submitCustomRequest(payload, baseInput({ product: 'any-slug' }), [{ data: pdf, name: 'certificate.pdf' }], {
+          ipHash: 'cr-ip-13c',
+          clientIp: '13.13.13.15',
+        }),
+      ).rejects.toThrow('products lookup down')
+      const privateFileCreates = createSpy.mock.calls.filter(([args]) => args.collection === 'private-files')
+      expect(privateFileCreates).toHaveLength(0)
+    } finally {
+      findSpy.mockRestore()
+      createSpy.mockRestore()
+    }
+  })
+
   it('(14) a throwing notification step (findGlobal) still returns the request number — MINOR 3', async () => {
     const findGlobalSpy = vi.spyOn(payload, 'findGlobal').mockRejectedValueOnce(new Error('site-settings unavailable'))
 

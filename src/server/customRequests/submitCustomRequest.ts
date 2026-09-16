@@ -29,14 +29,21 @@ async function findBySubmissionId(payload: Payload, submissionId: string): Promi
 
 async function createAttachmentDocs(payload: Payload, files: ValidatedAttachment[]): Promise<number[]> {
   const ids: number[] = []
-  for (const file of files) {
-    const doc = await payload.create({
-      collection: 'private-files',
-      data: {},
-      file: { data: file.data, mimetype: file.mimeType, name: file.name, size: file.data.length },
-      overrideAccess: true,
-    })
-    ids.push(doc.id)
+  try {
+    for (const file of files) {
+      const doc = await payload.create({
+        collection: 'private-files',
+        data: {},
+        file: { data: file.data, mimetype: file.mimeType, name: file.name, size: file.data.length },
+        overrideAccess: true,
+      })
+      ids.push(doc.id)
+    }
+  } catch (err) {
+    // A failure part-way through (e.g. the 3rd of 5 files) would otherwise
+    // orphan the files already written — the caller never receives their ids.
+    await deleteAttachmentDocs(payload, ids)
+    throw err
   }
   return ids
 }
@@ -91,13 +98,16 @@ export async function submitCustomRequest(
   if (limited) throw new PublicHttpError(429, 'err.rateLimited')
 
   const validatedFiles = await validateAttachments(files)
-  const attachmentIds = await createAttachmentDocs(payload, validatedFiles)
 
   // ADR 0011 §3: `product` on the wire is a slug (the only thing the public
   // product DTO exposes, ADR 0005) — resolve it to the row id the
   // relationship field expects. Never surfaced as an error: an unknown or
   // unpublished slug just means the request saves without the link.
+  // Resolved before any attachment is written, so a failing lookup can't
+  // leave uploaded PII files behind with no request to link them to.
   const productId = input.product ? await resolvePublicProductId(payload, input.product) : null
+
+  const attachmentIds = await createAttachmentDocs(payload, validatedFiles)
 
   const requestData = {
     submissionId: input.submissionId,
