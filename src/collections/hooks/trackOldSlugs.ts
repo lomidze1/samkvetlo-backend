@@ -69,11 +69,21 @@ export function trackOldSlugs<T extends OldSlugTrackable>({
 
     for (const other of others as OldSlugTrackable[]) {
       const remaining = slugsOf(other.oldSlugs).filter((slug) => slug !== newSlug)
-      await req.payload.update({
+      // Not payload.update(): products has versions/drafts, and update()
+      // reads the *latest* version (which may be an unpublished draft) as
+      // its base, then — since this call passes no `draft: true` — writes
+      // that base back out as the published document. On a published
+      // product with a pending draft edit, that would silently publish (or
+      // merge in) the draft (code review finding, same hazard documented in
+      // variantPricing.ts's recomputeProductPricing). db.updateOne() writes
+      // straight to the row by id — no version read/merge, no hooks — so it
+      // only ever touches this one denormalized field on the *live* row.
+      // Categories have no versions/drafts, so this is just as correct
+      // there, only simpler.
+      await req.payload.db.updateOne({
         collection,
         id: other.id,
         data: { oldSlugs: remaining.map((slug) => ({ slug })) },
-        overrideAccess: true,
         req,
       })
     }

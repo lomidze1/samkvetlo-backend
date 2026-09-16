@@ -109,9 +109,13 @@ export interface CategoryPathEntry {
  * redirect resolver (T5.4, which also needs each category's `oldSlugs`).
  */
 export async function getCategoryPathEntries(payload: Payload): Promise<CategoryPathEntry[]> {
+  // Code review NIT: this feeds the sitemap and the public redirect
+  // resolver, both anonymous-facing — overrideAccess: false, like
+  // getPublicCategories above, so a future tightening of Categories'
+  // access control is actually respected here too.
   const { docs } = await payload.find({
     collection: 'categories',
-    overrideAccess: true,
+    overrideAccess: false,
     depth: 0,
     limit: 0,
   })

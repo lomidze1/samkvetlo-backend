@@ -26,7 +26,13 @@ export async function resolvePublicRedirect(
     })
     const product = docs[0]
     if (!product?.slug) return null
-    return `/product/${product.slug}`
+    const to = `/product/${product.slug}`
+    // Code review finding: a lookup that happens to match the product's
+    // *current* slug (not an old one) resolves to its own URL — a 308
+    // there would redirect to itself forever. Only an old-slug match
+    // should ever produce a redirect.
+    if (to === `/product/${path}`) return null
+    return to
   }
 
   const lastSegment = path.split('/').filter(Boolean).pop()
@@ -34,5 +40,12 @@ export async function resolvePublicRedirect(
 
   const entries = await getCategoryPathEntries(payload)
   const match = entries.find((entry) => entry.slug === lastSegment || entry.oldSlugs.includes(lastSegment))
-  return match?.path ?? null
+  if (!match) return null
+
+  // Same self-redirect guard for categories: `path` may arrive as a bare
+  // slug or a full nested path, so it's normalized (leading `/`) before
+  // comparing against the resolved full path.
+  const normalizedInput = path.startsWith('/') ? path : `/${path}`
+  if (match.path === normalizedInput) return null
+  return match.path
 }

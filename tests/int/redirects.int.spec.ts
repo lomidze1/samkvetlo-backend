@@ -1,12 +1,15 @@
 // T5.4 (301/308 redirects, ADR 0002 slugs): trackOldSlugs.ts + the
 // GET /api/public/redirect resolver.
 // @vitest-environment node
-import { getPayload, type Payload } from 'payload'
+import { getPayload, type Payload, type PayloadRequest } from 'payload'
 import config from '@/payload.config'
 
+import { redirectEndpoint } from '@/endpoints/public/redirect'
 import { resolvePublicRedirect } from '@/server/public/redirect'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+const READ_TOKEN = process.env.SERVICE_TOKEN_READ ?? 'dev-read-token'
 
 let payload: Payload
 
@@ -113,11 +116,76 @@ describe('slug redirects (T5.4)', () => {
     // A brand-new doc created with title 'Redirect Reuse A ${suffix}' slugifies back to slugA.
     const newDocId = await createProduct(`Redirect Reuse A ${suffix}`, category.id, true)
 
-    expect(await resolvePublicRedirect(payload, 'product', slugA)).toBe(`/product/${slugA}`)
+    // slugA is now newDoc's *current* (live) slug, not a stale one — the
+    // self-redirect guard (code review finding) correctly returns null
+    // here: a real caller only reaches this resolver after a direct
+    // product-page lookup for slugA already 404'd, which can't happen
+    // while a live product owns that slug. "the new doc wins" is instead
+    // verified directly below, against the live slug.
+    expect(await resolvePublicRedirect(payload, 'product', slugA)).toBeNull()
+
+    const { docs: liveOwners } = await payload.find({
+      collection: 'products',
+      where: { slug: { equals: slugA } },
+      overrideAccess: true,
+      depth: 0,
+    })
+    expect(liveOwners).toHaveLength(1)
+    expect(liveOwners[0]?.id).toBe(newDocId)
 
     const oldDocAfter = await payload.findByID({ collection: 'products', id: oldDocId, overrideAccess: true })
     expect((oldDocAfter.oldSlugs ?? []).map((entry) => entry.slug)).not.toContain(slugA)
-    void newDocId
+  })
+
+  it('code review: a slug reuse does not silently publish another product\'s pending draft', async () => {
+    const suffix = `${Date.now()}-${Math.random()}`
+    const category = await createCategory(`redirect-cat-draft-bleed-${suffix}`)
+
+    // B: published, then renamed — the rename retires B's original slug
+    // onto B.oldSlugs (shouldTrackRetiredSlug = wasPublished, T5.4).
+    const sharedSlugTitle = `Redirect Bleed Shared ${suffix}`
+    const bId = await createProduct(sharedSlugTitle, category.id, true)
+    const publishedTitle = `Redirect Bleed B Renamed ${suffix}`
+    await renameProduct(bId, publishedTitle)
+
+    // B now has an unreviewed pending draft sitting on top of its published
+    // content — never saved with `draft: true` normally goes through the
+    // admin UI's "Save draft" button.
+    const draftTitle = `Redirect Bleed B UNREVIEWED DRAFT ${suffix}`
+    await payload.update({
+      collection: 'products',
+      id: bId,
+      data: { title: draftTitle },
+      draft: true,
+      overrideAccess: true,
+    })
+
+    // A new product reuses B's retired slug (title -> slugify ==
+    // sharedSlugTitle's slug) — this is exactly the beforeChange cross-doc
+    // cleanup in trackOldSlugs.ts running on B.
+    await createProduct(sharedSlugTitle, category.id, true)
+
+    // The published row (what the storefront/redirect resolver reads) must
+    // be completely untouched by the cleanup — not just its title, but its
+    // publish status.
+    const publishedB = await payload.findByID({
+      collection: 'products',
+      id: bId,
+      draft: false,
+      overrideAccess: true,
+    })
+    expect(publishedB.title).toBe(publishedTitle)
+
+    // B's pending draft must still be an unpublished draft — the cleanup
+    // must not have silently published it.
+    const latestB = await payload.findByID({
+      collection: 'products',
+      id: bId,
+      draft: true,
+      overrideAccess: true,
+    })
+    expect(latestB._status).toBe('draft')
+    expect(latestB.title).toBe(draftTitle)
   })
 
   it('product: an unpublished product leaks no redirect', async () => {
@@ -152,5 +220,88 @@ describe('slug redirects (T5.4)', () => {
   it('returns null for an unknown slug', async () => {
     expect(await resolvePublicRedirect(payload, 'product', 'not-a-real-slug-at-all')).toBeNull()
     expect(await resolvePublicRedirect(payload, 'category', 'not-a-real-slug-at-all')).toBeNull()
+  })
+
+  it('code review: a product lookup on its own current slug is not a redirect (would loop forever)', async () => {
+    const suffix = `${Date.now()}-${Math.random()}`
+    const category = await createCategory(`redirect-cat-selfloop-${suffix}`)
+    const id = await createProduct(`Redirect Self Loop ${suffix}`, category.id, true)
+    const currentSlug = (await payload.findByID({ collection: 'products', id, overrideAccess: true })).slug!
+
+    expect(await resolvePublicRedirect(payload, 'product', currentSlug)).toBeNull()
+  })
+
+  it('code review: a category lookup on its own current full path is not a redirect (would loop forever)', async () => {
+    const suffix = `${Date.now()}-${Math.random()}`
+    const parent = await createCategory(`redirect-parent-selfloop-${suffix}`)
+    const child = await createCategory(`redirect-child-selfloop-${suffix}`, parent.id)
+    const currentPath = `/${parent.slug}/${child.slug}`
+
+    expect(await resolvePublicRedirect(payload, 'category', currentPath)).toBeNull()
+    // A bare slug that omits a real parent segment is NOT a self-redirect —
+    // resolving `child` -> `/parent/child` adds information, it doesn't loop.
+    expect(await resolvePublicRedirect(payload, 'category', child.slug)).toBe(currentPath)
+  })
+
+  it('code review: a top-level category lookup on its own bare slug is not a redirect either', async () => {
+    const suffix = `${Date.now()}-${Math.random()}`
+    const topLevel = await createCategory(`redirect-toplevel-selfloop-${suffix}`)
+
+    expect(await resolvePublicRedirect(payload, 'category', topLevel.slug)).toBeNull()
+  })
+
+  // Code review finding: query params were hand-checked instead of
+  // zod-validated — an unknown `type` 404'd instead of 400ing, and `path`
+  // had no length limit.
+  describe('GET /api/public/redirect — zod query validation (code review)', () => {
+    function endpointRequest(query: string): PayloadRequest {
+      return {
+        url: `http://localhost:3001/api/public/redirect${query}`,
+        headers: new Headers({ authorization: `Bearer ${READ_TOKEN}` }),
+        payload,
+      } as unknown as PayloadRequest
+    }
+
+    it('missing type -> 400 err.validation', async () => {
+      const response = await redirectEndpoint.handler(endpointRequest('?path=foo'))
+      expect(response.status).toBe(400)
+      expect(await response.json()).toEqual({ error: { code: 'err.validation' } })
+    })
+
+    it('an unknown type -> 400, not 404', async () => {
+      const response = await redirectEndpoint.handler(endpointRequest('?type=bogus&path=foo'))
+      expect(response.status).toBe(400)
+    })
+
+    it('missing path -> 400', async () => {
+      const response = await redirectEndpoint.handler(endpointRequest('?type=product'))
+      expect(response.status).toBe(400)
+    })
+
+    it('a path over 200 characters -> 400 (previously unbounded)', async () => {
+      const longPath = 'a'.repeat(201)
+      const response = await redirectEndpoint.handler(endpointRequest(`?type=product&path=${longPath}`))
+      expect(response.status).toBe(400)
+    })
+
+    it('valid params but an unknown slug still 404s (unchanged)', async () => {
+      const response = await redirectEndpoint.handler(
+        endpointRequest('?type=product&path=not-a-real-slug-at-all'),
+      )
+      expect(response.status).toBe(404)
+      expect(await response.json()).toEqual({ error: { code: 'err.notFound' } })
+    })
+
+    it('a valid product redirect still resolves end to end', async () => {
+      const suffix = `${Date.now()}-${Math.random()}`
+      const category = await createCategory(`redirect-endpoint-cat-${suffix}`)
+      const id = await createProduct(`Redirect Endpoint A ${suffix}`, category.id, true)
+      const slugA = (await payload.findByID({ collection: 'products', id, overrideAccess: true })).slug!
+      const slugB = await renameProduct(id, `Redirect Endpoint B ${suffix}`)
+
+      const response = await redirectEndpoint.handler(endpointRequest(`?type=product&path=${slugA}`))
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ to: `/product/${slugB}` })
+    })
   })
 })

@@ -28,6 +28,20 @@ export class PublicNotFoundError extends Error {
 }
 
 /**
+ * Code review finding: thrown by a handler to produce a 400 with an error
+ * code (e.g. a zod parse failure on query params) — publicEndpoint catches
+ * it. Distinct from PublicNotFoundError: a malformed request (unknown
+ * `type`, missing `path`, ...) is a client error, not "no such resource".
+ */
+export class PublicBadRequestError extends Error {
+  readonly code: string
+  constructor(code = 'err.validation') {
+    super(code)
+    this.code = code
+  }
+}
+
+/**
  * Wraps a /api/public/* handler with service-token auth and output validation
  * (ADR 0005 layer 3, ADR 0012 §3-4). The handler's return value is checked
  * against `output` before it is ever sent; an unknown key fails closed (500).
@@ -53,6 +67,9 @@ export function publicEndpoint<Output extends ZodType>(
       } catch (err) {
         if (err instanceof PublicNotFoundError) {
           return errorResponse('err.notFound', 404)
+        }
+        if (err instanceof PublicBadRequestError) {
+          return errorResponse(err.code, 400)
         }
         throw err
       }
