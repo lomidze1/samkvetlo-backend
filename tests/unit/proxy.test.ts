@@ -6,6 +6,10 @@ import { NextRequest } from 'next/server'
 // for `config.matcher`, so it's what the code-review finding means by
 // "compile config.matcher": a test calling `proxy()` directly never
 // exercises whether the *matcher* would even let a request reach it.
+// This is a deep import into Next's internals, not its public API — an
+// intentional, acceptable risk (code review n1): a Next upgrade that moves
+// or changes this file fails this test loudly (import/type error), it
+// doesn't silently start testing the wrong thing.
 import { getPathMatch } from 'next/dist/shared/lib/router/utils/path-match'
 import { afterEach, describe, expect, it } from 'vitest'
 import { config, containsDotSegment, proxy } from '../../src/proxy'
