@@ -1,6 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 import { isAdmin } from '../access/isAdmin'
+import { auditBreakGlassLogin } from './hooks/breakGlassAudit'
 import { enforcePasswordMinLength } from './hooks/passwordPolicy'
 
 export const Users: CollectionConfig = {
@@ -27,6 +28,8 @@ export const Users: CollectionConfig = {
   },
   hooks: {
     beforeValidate: [enforcePasswordMinLength],
+    // ADR 0016 (T5.14): logs + emails the owners on a break-glass login.
+    afterLogin: [auditBreakGlassLogin],
   },
   fields: [
     // Email added by default

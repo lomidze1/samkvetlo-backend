@@ -81,6 +81,7 @@ export interface Config {
     portfolio: Portfolio;
     pages: Page;
     'delivery-zones': DeliveryZone;
+    'audit-events': AuditEvent;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -106,6 +107,7 @@ export interface Config {
     portfolio: PortfolioSelect<false> | PortfolioSelect<true>;
     pages: PagesSelect<false> | PagesSelect<true>;
     'delivery-zones': DeliveryZonesSelect<false> | DeliveryZonesSelect<true>;
+    'audit-events': AuditEventsSelect<false> | AuditEventsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -689,6 +691,19 @@ export interface DeliveryZone {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "audit-events".
+ */
+export interface AuditEvent {
+  id: number;
+  type: string;
+  user: number | User;
+  country?: string | null;
+  at: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -766,6 +781,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'delivery-zones';
         value: number | DeliveryZone;
+      } | null)
+    | ({
+        relationTo: 'audit-events';
+        value: number | AuditEvent;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -1210,6 +1229,18 @@ export interface DeliveryZonesSelect<T extends boolean = true> {
   feeGel?: T;
   sortOrder?: T;
   active?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "audit-events_select".
+ */
+export interface AuditEventsSelect<T extends boolean = true> {
+  type?: T;
+  user?: T;
+  country?: T;
+  at?: T;
   updatedAt?: T;
   createdAt?: T;
 }

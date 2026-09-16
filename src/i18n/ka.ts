@@ -17,5 +17,15 @@ export const ka = {
       tbilisiSlugImmutable: '„თბილისი“-ის slug ვერ შეიცვლება',
       tbilisiCannotDelete: '„თბილისი“ ვერ წაიშლება',
     },
+    // ADR 0016 (T5.14): sent to every site-settings.ownerEmails address the
+    // moment a break-glass login happens, so the other partner notices
+    // immediately (Users.hooks.afterLogin).
+    security: {
+      breakGlassSubject: (email: string) => `ადმინში შესვლა საქართველოს გარეთიდან — ${email}`,
+      breakGlassBody: (email: string, country: string) =>
+        `${email} შევიდა ადმინში საქართველოს გარეთ (ქვეყანა: ${country}) break-glass გამონაკლისით.\n\n` +
+        'თუ ეს თქვენ ან თქვენი პარტნიორი იყავით, დამატებითი მოქმედება არ სჭირდება — გამონაკლისს ვადა თავისთავად ეწურება.\n' +
+        'თუ ეს არც ერთმა თქვენგანმა არ იცის, დაუყოვნებლივ შეცვალეთ ორივე ანგარიშის პაროლი და გამორთეთ Vercel Firewall-ის break-glass წესი.',
+    },
   },
 } as const

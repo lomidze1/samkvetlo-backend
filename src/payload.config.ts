@@ -20,6 +20,7 @@ import { Orders } from './collections/Orders'
 import { Portfolio } from './collections/Portfolio'
 import { Pages } from './collections/Pages'
 import { DeliveryZones } from './collections/DeliveryZones'
+import { AuditEvents } from './collections/AuditEvents'
 import { PricingSettings } from './globals/PricingSettings'
 import { SiteSettings } from './globals/SiteSettings'
 import { healthEndpoint } from './endpoints/public/health'
@@ -109,6 +110,7 @@ export default buildConfig({
     Portfolio,
     Pages,
     DeliveryZones,
+    AuditEvents,
   ],
   globals: [PricingSettings, SiteSettings],
   editor: lexicalEditor(),
