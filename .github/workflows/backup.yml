@@ -1,0 +1,69 @@
+name: Nightly DB backup
+
+# ADR 0014 §10 (T5.13). No R2 credentials or `samkvetlo_backup` connection
+# string exist yet (owner hasn't set up the R2 bucket/Neon role in prod), so
+# this workflow is schedule + manual-dispatch only, and every step after the
+# secrets check is skipped — the run finishes green, not red, until the
+# owner adds the secrets below.
+#
+# R2 lifecycle (cannot be configured from here — set up by hand on the R2
+# bucket, ADR 0014 §10): a rule on prefix `db/` that deletes objects after
+# 35 days. That, plus this job overwriting one object per calendar day,
+# is what keeps the backup retention at 35 days without a second workflow.
+on:
+  schedule:
+    # 02:00 Tbilisi = 22:00 UTC (Georgia has used a fixed UTC+4 offset,
+    # no DST, since 2005 — this line never needs a seasonal change).
+    - cron: '0 22 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    name: pg_dump -> R2
+    runs-on: ubuntu-latest
+    # pg_dump's version must be >= the server's (ADR 0014 §10) — running the
+    # job inside the same postgres:18 image as prod guarantees that.
+    container: postgres:18
+    steps:
+      - name: Check required secrets
+        id: check
+        env:
+          HAS_DB: ${{ secrets.BACKUP_DATABASE_URL != '' }}
+          HAS_KEY: ${{ secrets.R2_ACCESS_KEY_ID != '' }}
+          HAS_SECRET: ${{ secrets.R2_SECRET_ACCESS_KEY != '' }}
+          HAS_ENDPOINT: ${{ secrets.R2_ENDPOINT != '' }}
+          HAS_BUCKET: ${{ secrets.R2_BACKUP_BUCKET != '' }}
+        run: |
+          if [ "$HAS_DB" = "true" ] && [ "$HAS_KEY" = "true" ] && [ "$HAS_SECRET" = "true" ] && [ "$HAS_ENDPOINT" = "true" ] && [ "$HAS_BUCKET" = "true" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: No-op — backup secrets not configured yet
+        if: steps.check.outputs.ready == 'false'
+        run: echo "BACKUP_DATABASE_URL / R2_* secrets are not set yet (see docs/db-roles.sql and README.md's restore drill). Skipping — this is expected pre-launch, not a failure."
+
+      - name: pg_dump (samkvetlo_backup role — SELECT only, ADR 0014 §9)
+        if: steps.check.outputs.ready == 'true'
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: pg_dump -Fc --no-owner --dbname="$BACKUP_DATABASE_URL" -f backup.dump
+
+      - name: Install the AWS CLI (R2's S3-compatible API)
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq awscli >/dev/null
+
+      - name: Upload to R2
+        if: steps.check.outputs.ready == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BACKUP_BUCKET: ${{ secrets.R2_BACKUP_BUCKET }}
+        run: |
+          DATE=$(date -u +%F)
+          aws s3 cp backup.dump "s3://${R2_BACKUP_BUCKET}/db/${DATE}.dump" --endpoint-url "$R2_ENDPOINT"
