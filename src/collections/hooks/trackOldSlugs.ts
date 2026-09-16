@@ -42,19 +42,59 @@ export function trackOldSlugs<T extends OldSlugTrackable>({
     if (!newSlug) return data
 
     let nextData = data
+    const excludeId = originalDoc?.id
 
     if (operation === 'update' && originalDoc) {
       const oldSlug = typeof originalDoc.slug === 'string' ? originalDoc.slug : undefined
       const slugChanged = Boolean(oldSlug) && oldSlug !== newSlug
       const shouldTrack = slugChanged && (!shouldTrackRetiredSlug || shouldTrackRetiredSlug(originalDoc))
 
+      // `originalDoc` here is built from the *latest version* (which can be
+      // a pending draft, or — the self-heal case, code review M1 — simply
+      // stale, since the cross-doc cleanup below writes only to the main
+      // row via db.updateOne and never touches `_products_v`). Either way,
+      // `originalDoc.oldSlugs` is the value Payload's own field-level merge
+      // would otherwise silently carry forward into `data` on ANY update
+      // that doesn't itself touch `oldSlugs` — including one that has
+      // nothing to do with slugs at all (e.g. toggling `featured`). Setting
+      // `nextData.oldSlugs` explicitly, on every update, pins the value
+      // this save writes instead of leaving it to that fallback.
+      let effectiveOldSlugs = slugsOf(originalDoc.oldSlugs).filter((slug) => slug !== newSlug)
       if (shouldTrack && oldSlug) {
-        const retained = slugsOf(originalDoc.oldSlugs).filter((slug) => slug !== newSlug)
-        nextData = { ...data, oldSlugs: [...retained.map((slug) => ({ slug })), { slug: oldSlug }] }
+        effectiveOldSlugs = [...effectiveOldSlugs, oldSlug]
       }
+
+      // Self-heal: strip any slug that is CURRENTLY another doc's *live*
+      // slug. Without this, a stale `oldSlugs` entry surviving in a
+      // version row (see above) would keep resurrecting itself on every
+      // future unrelated save, even after the cross-doc cleanup below
+      // already cleared it once — reproduced by the code review: rename
+      // B x->y, create A with slug x (clears B's live oldSlugs to []), a
+      // later unrelated save on B (e.g. featured: true) would otherwise
+      // put `x` back on B while A also legitimately owns it live.
+      if (effectiveOldSlugs.length > 0) {
+        const { docs: liveElsewhere } = await req.payload.find({
+          collection,
+          where: {
+            and: [
+              ...(excludeId ? [{ id: { not_equals: excludeId } }] : []),
+              { slug: { in: effectiveOldSlugs } },
+            ],
+          },
+          overrideAccess: true,
+          depth: 0,
+          limit: 0,
+          req,
+        })
+        const liveSlugsElsewhere = new Set(
+          (liveElsewhere as OldSlugTrackable[]).map((doc) => doc.slug).filter((slug): slug is string => Boolean(slug)),
+        )
+        effectiveOldSlugs = effectiveOldSlugs.filter((slug) => !liveSlugsElsewhere.has(slug))
+      }
+
+      nextData = { ...data, oldSlugs: effectiveOldSlugs.map((slug) => ({ slug })) }
     }
 
-    const excludeId = originalDoc?.id
     const matchesNewSlug: Where = { 'oldSlugs.slug': { equals: newSlug } }
     const where: Where = excludeId ? { and: [{ id: { not_equals: excludeId } }, matchesNewSlug] } : matchesNewSlug
 

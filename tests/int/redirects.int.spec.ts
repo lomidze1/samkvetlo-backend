@@ -188,6 +188,50 @@ describe('slug redirects (T5.4)', () => {
     expect(latestB.title).toBe(draftTitle)
   })
 
+  it('code review M1: an unrelated save on B does not resurrect a stale oldSlugs conflict with A', async () => {
+    const suffix = `${Date.now()}-${Math.random()}`
+    const category = await createCategory(`redirect-cat-m1-${suffix}`)
+
+    // B: created with slug X, then renamed to Y — retires X onto B.oldSlugs.
+    const bId = await createProduct(`Redirect M1 X ${suffix}`, category.id, true)
+    const slugX = (await payload.findByID({ collection: 'products', id: bId, overrideAccess: true })).slug!
+    await renameProduct(bId, `Redirect M1 Y ${suffix}`)
+
+    const bAfterRename = await payload.findByID({ collection: 'products', id: bId, overrideAccess: true })
+    expect((bAfterRename.oldSlugs ?? []).map((entry) => entry.slug)).toEqual([slugX])
+
+    // A reuses X as its own live slug — the cross-doc cleanup (db.updateOne,
+    // blocker #1's fix) clears it from B's *main row*, but not from the
+    // version row `payload.update()` uses as its merge base on B's next save.
+    const aId = await createProduct(`Redirect M1 X ${suffix}`, category.id, true)
+    const bAfterReuse = await payload.findByID({ collection: 'products', id: bId, overrideAccess: true })
+    expect((bAfterReuse.oldSlugs ?? []).map((entry) => entry.slug)).not.toContain(slugX)
+
+    // An UNRELATED save on B — touches neither slug nor oldSlugs. Without
+    // the self-heal in trackOldSlugs.ts, Payload's own field-level merge
+    // would restore oldSlugs from the (stale) version-row base, putting X
+    // back on B while A also legitimately owns it live.
+    await payload.update({
+      collection: 'products',
+      id: bId,
+      data: { featured: true },
+      overrideAccess: true,
+    })
+
+    const bAfterUnrelatedSave = await payload.findByID({ collection: 'products', id: bId, overrideAccess: true })
+    expect(bAfterUnrelatedSave.featured).toBe(true)
+    expect((bAfterUnrelatedSave.oldSlugs ?? []).map((entry) => entry.slug)).not.toContain(slugX)
+
+    // The slug must resolve to exactly one live-or-retired owner: A.
+    const { docs: owners } = await payload.find({
+      collection: 'products',
+      where: { or: [{ slug: { equals: slugX } }, { 'oldSlugs.slug': { equals: slugX } }] },
+      overrideAccess: true,
+      depth: 0,
+    })
+    expect(owners.map((doc) => doc.id)).toEqual([aId])
+  })
+
   it('product: an unpublished product leaks no redirect', async () => {
     const suffix = `${Date.now()}-${Math.random()}`
     const category = await createCategory(`redirect-cat-draft-${suffix}`)
@@ -262,6 +306,11 @@ describe('slug redirects (T5.4)', () => {
       } as unknown as PayloadRequest
     }
 
+    // Code review M2: the frontend (samkvetlo/src/lib/api/redirect.ts) only
+    // treats a 404 as "no redirect" — anything else 500s the page. `type`
+    // is always one of the two literals the frontend itself sends, so a
+    // malformed `type` is a genuine 400. `path` comes from an arbitrary
+    // URL segment, so anything wrong with it must 404, never 400.
     it('missing type -> 400 err.validation', async () => {
       const response = await redirectEndpoint.handler(endpointRequest('?path=foo'))
       expect(response.status).toBe(400)
@@ -273,15 +322,17 @@ describe('slug redirects (T5.4)', () => {
       expect(response.status).toBe(400)
     })
 
-    it('missing path -> 400', async () => {
+    it('missing path -> 404, not 400 (the storefront never sends a malformed type)', async () => {
       const response = await redirectEndpoint.handler(endpointRequest('?type=product'))
-      expect(response.status).toBe(400)
+      expect(response.status).toBe(404)
+      expect(await response.json()).toEqual({ error: { code: 'err.notFound' } })
     })
 
-    it('a path over 200 characters -> 400 (previously unbounded)', async () => {
+    it('a path over 200 characters -> 404, not 400 (would otherwise 500 the storefront)', async () => {
       const longPath = 'a'.repeat(201)
       const response = await redirectEndpoint.handler(endpointRequest(`?type=product&path=${longPath}`))
-      expect(response.status).toBe(400)
+      expect(response.status).toBe(404)
+      expect(await response.json()).toEqual({ error: { code: 'err.notFound' } })
     })
 
     it('valid params but an unknown slug still 404s (unchanged)', async () => {

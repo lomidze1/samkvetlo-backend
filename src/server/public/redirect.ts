@@ -23,6 +23,11 @@ export async function resolvePublicRedirect(
       overrideAccess: false,
       depth: 0,
       limit: 1,
+      // Code review M1: with the self-heal in trackOldSlugs.ts this query
+      // should never actually match more than one doc, but `limit: 1`
+      // without a sort would otherwise let the database pick an arbitrary
+      // row when it did — most-recently-updated wins, deterministically.
+      sort: '-updatedAt',
     })
     const product = docs[0]
     if (!product?.slug) return null
