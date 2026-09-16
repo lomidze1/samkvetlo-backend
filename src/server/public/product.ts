@@ -46,7 +46,9 @@ function emptyPage(page: number): Paginated<PublicProductCard> {
 // D8 (see variantPricing.ts): a price stays live on the site while its
 // status is 'approved' or 'needs-review' (a rate change flagged it for
 // re-review, but the old confirmed price is still what we sell at).
-function isPriceLive(variant: Pick<Variant, 'price' | 'priceStatus'>): boolean {
+// Exported so quoteCart/submitOrder (T3.1/T3.3) reuse this exact
+// "is this variant publicly purchasable" definition instead of a second one.
+export function isPriceLive(variant: Pick<Variant, 'price' | 'priceStatus'>): boolean {
   return (
     (variant.priceStatus === 'approved' || variant.priceStatus === 'needs-review') &&
     typeof variant.price === 'number'

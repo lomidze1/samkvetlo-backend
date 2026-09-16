@@ -28,3 +28,30 @@ export async function getPublicDeliveryZones(payload: Payload): Promise<PublicDe
       feeGel: doc.feeGel,
     }))
 }
+
+export interface ActiveDeliveryZone {
+  slug: string
+  name: string
+  feeGel: number
+}
+
+/**
+ * ADR 0015 §3: looks up one *active* zone by slug for quoteCart/submitOrder.
+ * The client's own fee is never trusted — every price is read straight
+ * from this row.
+ */
+export async function getActiveDeliveryZoneBySlug(
+  payload: Payload,
+  slug: string,
+): Promise<ActiveDeliveryZone | null> {
+  const { docs } = await payload.find({
+    collection: 'delivery-zones',
+    where: { slug: { equals: slug }, active: { equals: true } },
+    overrideAccess: false,
+    depth: 0,
+    limit: 1,
+  })
+  const doc = docs[0]
+  if (!doc || !doc.slug) return null
+  return { slug: doc.slug, name: doc.name, feeGel: doc.feeGel }
+}

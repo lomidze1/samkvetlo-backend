@@ -105,6 +105,29 @@ async function ensureSiteSettingsPhone(payload: Payload): Promise<void> {
   })
 }
 
+// T3.4 (ADR 0007 §5): order.created notifications go nowhere without at
+// least one owner recipient. Dev-only placeholders — never real
+// contacts — so a fresh dev DB actually exercises the email/SMS adapters;
+// the owner replaces these in the admin before launch (never overwritten
+// here once set, same as ensureSiteSettingsPhone above). ⏳ owner question:
+// the real owner email(s)/phone(s) to use in production.
+const SEED_PLACEHOLDER_OWNER_EMAIL = 'owner@samkvetlo.local'
+const SEED_PLACEHOLDER_OWNER_PHONE = '+995500000000'
+
+async function ensureSiteSettingsOwnerContacts(payload: Payload): Promise<void> {
+  const settings = await payload.findGlobal({ slug: 'site-settings', overrideAccess: true })
+  if ((settings.ownerEmails?.length ?? 0) > 0 || (settings.ownerPhones?.length ?? 0) > 0) return
+  await payload.updateGlobal({
+    slug: 'site-settings',
+    data: {
+      ownerEmails: [{ email: SEED_PLACEHOLDER_OWNER_EMAIL }],
+      ownerPhones: [{ phone: SEED_PLACEHOLDER_OWNER_PHONE }],
+    },
+    overrideAccess: true,
+    context: SEED_CONTEXT,
+  })
+}
+
 interface StaticPageSeed {
   slug: 'how-we-work' | 'about' | 'delivery' | 'contact' | 'privacy'
   title: string
@@ -490,6 +513,7 @@ export async function runSeed(payload: Payload): Promise<void> {
 
   await ensureAdmin(payload)
   await ensureSiteSettingsPhone(payload)
+  await ensureSiteSettingsOwnerContacts(payload)
   await ensureStaticPages(payload)
 
   const bellsId = await upsertCategory(payload, 'ზარები')
