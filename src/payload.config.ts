@@ -31,6 +31,8 @@ import { searchEndpoint } from './endpoints/public/search'
 import { pageBySlugEndpoint } from './endpoints/public/pages'
 import { portfolioListEndpoint, portfolioBySlugEndpoint } from './endpoints/public/portfolio'
 import { deliveryZonesEndpoint } from './endpoints/public/deliveryZones'
+import { sitemapEndpoint } from './endpoints/public/sitemap'
+import { redirectEndpoint } from './endpoints/public/redirect'
 import { cronRatesEndpoint } from './endpoints/cronRates'
 
 const filename = fileURLToPath(import.meta.url)
@@ -132,6 +134,8 @@ export default buildConfig({
     portfolioListEndpoint,
     portfolioBySlugEndpoint,
     deliveryZonesEndpoint,
+    sitemapEndpoint,
+    redirectEndpoint,
     cronRatesEndpoint,
   ],
   graphQL: {

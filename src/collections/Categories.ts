@@ -4,6 +4,7 @@ import { isAdmin } from '../access/isAdmin'
 import { publicRead } from '../access/publicRead'
 import { slugify } from '../lib/translit'
 import { revalidateAfterChange, revalidateAfterDelete } from './hooks/revalidate'
+import { trackOldSlugs } from './hooks/trackOldSlugs'
 
 // T1.2: routes that a category slug must never collide with.
 export const PROTECTED_SLUGS = [
@@ -48,6 +49,7 @@ export const Categories: CollectionConfig = {
         return data
       },
     ],
+    beforeChange: [trackOldSlugs({ collection: 'categories' })],
     afterChange: [revalidateAfterChange(['catalog'])],
     afterDelete: [revalidateAfterDelete(['catalog'])],
   },
@@ -83,6 +85,14 @@ export const Categories: CollectionConfig = {
       type: 'relationship',
       relationTo: 'categories',
       label: 'მშობელი კატეგორია',
+    },
+    // T5.4 (301 redirects): filled by trackOldSlugs, never by hand.
+    {
+      name: 'oldSlugs',
+      type: 'array',
+      label: 'ძველი Slug-ები',
+      admin: { readOnly: true, description: 'ივსება ავტომატურად slug-ის შეცვლისას' },
+      fields: [{ name: 'slug', type: 'text', required: true, index: true, label: 'Slug' }],
     },
   ],
 }

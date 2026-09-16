@@ -10,6 +10,17 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [{ source: '/', destination: '/admin', permanent: false }]
   },
+  // T5.x SEO contract: nothing on this backend (admin, built-in REST,
+  // /api/public/*) should ever be indexed — the storefront (samkvetlo) is
+  // the only origin search engines should see.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }],
+      },
+    ]
+  },
   webpack: (webpackConfig) => {
     webpackConfig.resolve.extensionAlias = {
       '.cjs': ['.cts', '.cjs'],

@@ -1,5 +1,6 @@
 import type { Payload } from 'payload'
 
+import type { SiteSetting } from '../../payload-types'
 import type { PublicSiteSettings } from '../../shared/contract/siteSettings'
 
 /**
@@ -21,5 +22,17 @@ export async function getPublicSiteSettings(payload: Payload): Promise<PublicSit
     address: settings.address ?? null,
     social: (settings.social ?? []).map((entry) => ({ label: entry.label, url: entry.url })),
     configuratorEnabled: settings.configuratorEnabled ?? false,
+    store: toPublicStore(settings.store),
+  }
+}
+
+/** `null` unless the owner opted in and both required fields are set (T5.x SEO contract). */
+function toPublicStore(store: SiteSetting['store']): PublicSiteSettings['store'] {
+  if (!store?.publishAddress) return null
+  if (!store.streetAddress || !store.addressLocality) return null
+  return {
+    streetAddress: store.streetAddress,
+    addressLocality: store.addressLocality,
+    postalCode: store.postalCode ?? null,
   }
 }

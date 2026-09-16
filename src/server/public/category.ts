@@ -92,3 +92,73 @@ export async function resolveCategorySubtreeIds(payload: Payload, slug: string):
   }
   return ids
 }
+
+export interface CategoryPathEntry {
+  id: number
+  slug: string
+  oldSlugs: string[]
+  parentId: number | null
+  path: string
+  updatedAt: string
+}
+
+/**
+ * T5.x SEO contract: every category with its full nested path (e.g.
+ * `/zarebi/saeklesio-zarebi`, root-to-leaf by slug) — shared by the
+ * sitemap mapper (filters to categories with >= 1 sitemap product) and the
+ * redirect resolver (T5.4, which also needs each category's `oldSlugs`).
+ */
+export async function getCategoryPathEntries(payload: Payload): Promise<CategoryPathEntry[]> {
+  const { docs } = await payload.find({
+    collection: 'categories',
+    overrideAccess: true,
+    depth: 0,
+    limit: 0,
+  })
+
+  interface Node {
+    id: number
+    slug: string
+    oldSlugs: string[]
+    parentId: number | null
+    updatedAt: string
+    children: Node[]
+  }
+
+  const byId = new Map<number, Node>()
+  for (const doc of docs) {
+    if (!doc.slug) continue
+    byId.set(doc.id, {
+      id: doc.id,
+      slug: doc.slug,
+      oldSlugs: (doc.oldSlugs ?? []).map((entry) => entry.slug).filter((slug): slug is string => Boolean(slug)),
+      parentId: parentIdOf(doc.parent),
+      updatedAt: doc.updatedAt,
+      children: [],
+    })
+  }
+
+  const roots: Node[] = []
+  for (const node of byId.values()) {
+    const parent = node.parentId !== null ? byId.get(node.parentId) : undefined
+    if (parent) parent.children.push(node)
+    else roots.push(node)
+  }
+
+  const result: CategoryPathEntry[] = []
+  function walk(node: Node, prefixSlugs: string[]): void {
+    const segments = [...prefixSlugs, node.slug]
+    result.push({
+      id: node.id,
+      slug: node.slug,
+      oldSlugs: node.oldSlugs,
+      parentId: node.parentId,
+      path: `/${segments.join('/')}`,
+      updatedAt: node.updatedAt,
+    })
+    for (const child of node.children) walk(child, segments)
+  }
+  for (const root of roots) walk(root, [])
+
+  return result
+}

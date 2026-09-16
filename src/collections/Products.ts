@@ -6,7 +6,14 @@ import { slugify } from '../lib/translit'
 import { createDefaultVariant } from './hooks/defaultVariant'
 import { validateProductPublish } from './hooks/productPublishValidation'
 import { revalidateAfterChange, revalidateAfterDelete } from './hooks/revalidate'
+import { trackOldSlugs, type OldSlugTrackable } from './hooks/trackOldSlugs'
 import { recomputeProductPricingBeforeChange } from './hooks/variantPricing'
+
+// T5.4 (301 redirects): an unpublished product's slug was never public, so
+// changing it shouldn't create a redirect.
+function wasPublished(originalDoc: OldSlugTrackable & { _status?: string | null }): boolean {
+  return originalDoc._status === 'published'
+}
 
 export const Products: CollectionConfig = {
   slug: 'products',
@@ -38,7 +45,10 @@ export const Products: CollectionConfig = {
       },
       validateProductPublish,
     ],
-    beforeChange: [recomputeProductPricingBeforeChange],
+    beforeChange: [
+      recomputeProductPricingBeforeChange,
+      trackOldSlugs({ collection: 'products', shouldTrackRetiredSlug: wasPublished }),
+    ],
     // ADR 0012 §5: catalog tag — the storefront's product list/detail pages.
     afterChange: [createDefaultVariant, revalidateAfterChange(['catalog'])],
     afterDelete: [revalidateAfterDelete(['catalog'])],
@@ -191,6 +201,14 @@ export const Products: CollectionConfig = {
           Field: '/components/admin/ProductCostingLinks#ProductCostingLinks',
         },
       },
+    },
+    // T5.4 (301 redirects): filled by trackOldSlugs, never by hand.
+    {
+      name: 'oldSlugs',
+      type: 'array',
+      label: 'ძველი Slug-ები',
+      admin: { readOnly: true, description: 'ივსება ავტომატურად slug-ის შეცვლისას' },
+      fields: [{ name: 'slug', type: 'text', required: true, index: true, label: 'Slug' }],
     },
   ],
 }

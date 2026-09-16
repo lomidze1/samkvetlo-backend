@@ -296,6 +296,15 @@ export interface Category {
    */
   slug?: string | null;
   parent?: (number | null) | Category;
+  /**
+   * ივსება ავტომატურად slug-ის შეცვლისას
+   */
+  oldSlugs?:
+    | {
+        slug: string;
+        id?: string | null;
+      }[]
+    | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -383,6 +392,15 @@ export interface Product {
    * ავტომატურად ითვლება ვარიანტებიდან
    */
   isPurchasable?: boolean | null;
+  /**
+   * ივსება ავტომატურად slug-ის შეცვლისას
+   */
+  oldSlugs?:
+    | {
+        slug: string;
+        id?: string | null;
+      }[]
+    | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -975,6 +993,12 @@ export interface CategoriesSelect<T extends boolean = true> {
   name?: T;
   slug?: T;
   parent?: T;
+  oldSlugs?:
+    | T
+    | {
+        slug?: T;
+        id?: T;
+      };
   updatedAt?: T;
   createdAt?: T;
 }
@@ -1020,6 +1044,12 @@ export interface ProductsSelect<T extends boolean = true> {
   variants?: T;
   minPrice?: T;
   isPurchasable?: T;
+  oldSlugs?:
+    | T
+    | {
+        slug?: T;
+        id?: T;
+      };
   updatedAt?: T;
   createdAt?: T;
   _status?: T;
@@ -1344,6 +1374,12 @@ export interface SiteSetting {
     | null;
   notifyCustomer?: boolean | null;
   shareLinkTtlDays?: number | null;
+  store?: {
+    publishAddress?: boolean | null;
+    streetAddress?: string | null;
+    addressLocality?: string | null;
+    postalCode?: string | null;
+  };
   updatedAt?: string | null;
   createdAt?: string | null;
 }
@@ -1403,6 +1439,14 @@ export interface SiteSettingsSelect<T extends boolean = true> {
       };
   notifyCustomer?: T;
   shareLinkTtlDays?: T;
+  store?:
+    | T
+    | {
+        publishAddress?: T;
+        streetAddress?: T;
+        addressLocality?: T;
+        postalCode?: T;
+      };
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;

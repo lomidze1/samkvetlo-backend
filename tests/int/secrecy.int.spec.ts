@@ -19,6 +19,7 @@ import { getPublicProductCards, getPublicProductBySlug } from '@/server/public/p
 import { getPublicPageBySlug } from '@/server/public/page'
 import { getPublicPortfolio, getPublicPortfolioBySlug } from '@/server/public/portfolio'
 import { getPublicDeliveryZones } from '@/server/public/deliveryZones'
+import { getPublicSitemap } from '@/server/public/sitemap'
 
 import { runSeed, teardownSeed } from '../../scripts/seed'
 import { SENTINEL } from '../fixtures/sentinel'
@@ -279,6 +280,7 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
       'email',
       'phone',
       'social',
+      'store',
     ])
 
     const zones = await getPublicDeliveryZones(payload)
@@ -322,6 +324,10 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
       if (page) expect(Object.keys(page).sort()).toEqual(['content', 'slug', 'title'])
     }
 
+    const sitemap = await getPublicSitemap(payload)
+    assertNoSentinel('sitemap', sitemap)
+    expect(Object.keys(sitemap).sort()).toEqual(['categories', 'pages', 'portfolio', 'products'])
+
     // D19 exception: documents[*].issuer legitimately carries the supplier
     // name — stripped before the blanket check, then checked positively (it
     // must be there, and *only* there).
@@ -353,7 +359,13 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
   })
 
   it('every /api/public/* endpoint (read token) never leaks a sentinel value', async () => {
-    for (const path of ['/public/categories', '/public/site-settings', '/public/portfolio', '/public/delivery-zones']) {
+    for (const path of [
+      '/public/categories',
+      '/public/site-settings',
+      '/public/portfolio',
+      '/public/delivery-zones',
+      '/public/sitemap',
+    ]) {
       const response = await callEndpoint(path)
       expect(response.status, path).toBe(200)
       assertNoSentinel(path, await response.json())
