@@ -95,49 +95,65 @@ describe('scrubEvent (T5.10, ADR 0014 §11)', () => {
     expect(customer.ownerSecret).toBe('[Filtered]')
   })
 
-  // Code review finding: ADR 0005's cardinal rule is supplier/costing
-  // secrecy, and the old pattern let supplierUrl/supplierSku/costRub/
-  // markup pass straight through — a costing error's `extra` would have
-  // shipped ₽ cost and a supplier URL to Sentry. This feeds the same
-  // SENTINEL values other secrecy tests use (tests/fixtures/sentinel.ts),
-  // under the real field names they come from (Costings/Orders), and
-  // checks none of them survive anywhere in the scrubbed JSON — not just
-  // under the one key each test above happens to check.
+  // Code review finding #3: the previous version of this test nested every
+  // sensitive field under wrapper keys like `costing:`/`supplier:`/
+  // `order:` — but those wrapper keys themselves match the pattern
+  // (`costing` -> "cost", `supplier` -> "supplier"), so redactPII replaced
+  // the *whole nested object* in one step and never actually recursed into
+  // (or individually exercised) each child key. Removing any single term
+  // from PII_KEY_PATTERN would therefore NOT have failed this test.
   //
-  // Excluded on purpose: SENTINEL.filename and SENTINEL.shareLinkTtlDays.
-  // Neither is a Sentry-scrub secrecy concern — filename is scrubbed by
-  // the upload rename hook before it ever reaches a public response (ADR
-  // 0005 layer 4), and shareLinkTtlDays is a non-secret admin setting that
-  // only borrows the 987654 pattern for an unrelated public-DTO leak test.
-  it('drops every ADR 0005/D25 SENTINEL value anywhere in a realistic costing+order failure event', () => {
-    const event: Event = {
+  // Fixed by putting every sensitive field at the top level of `extra`, on
+  // its own, and asserting each one individually — every real field name
+  // from Costings/Suppliers/Orders (checked against src/collections/*.ts,
+  // not guessed) that ADR 0005/D25 needs kept out of Sentry. Costings
+  // fields without a tests/fixtures/sentinel.ts entry get a distinctive
+  // local placeholder instead of inventing a project-wide sentinel value
+  // for them. `itemsTotalGel` is the control: it must survive, proving
+  // this isn't "redact everything in extra". Verified (manually, by
+  // deleting each pattern term and re-running): removing any term below
+  // fails this test EXCEPT `surname`, which is structurally redundant with
+  // `name` (every "surname" contains "name" as a substring) and always
+  // has been, since before this review round.
+  it('drops every ADR 0005/D25 sensitive field individually — removing any one term from the pattern turns this red', () => {
+    const sensitiveFields = {
+      // Costings (ADR 0005 cardinal rule: supplier + cost secrecy)
+      supplierUrl: SENTINEL.supplierUrl,
+      supplierSku: SENTINEL.supplierSku,
+      costRub: SENTINEL.costRub,
+      logisticsGel: 452.3,
+      costGel: 1234.56,
+      otherCostsGel: 12,
+      markupGel: 300,
+      notes: SENTINEL.note,
+      // Suppliers (naming or reaching the supplier directly lets a
+      // competitor route around Samkvetlo, same reason as supplierName/Url)
+      supplierName: SENTINEL.supplierName,
+      website: 'https://a-real-supplier-site.invalid',
+      contact: '+995500111222',
+      // Orders (customer PII, D25)
+      name: SENTINEL.orderCustomerName,
+      surname: SENTINEL.orderCustomerSurname,
+      phone: SENTINEL.orderCustomerPhone,
+      email: SENTINEL.orderCustomerEmail,
+      church: SENTINEL.orderCustomerChurch,
+      comment: 'დარეკეთ საღამოს 6 საათის შემდეგ',
+      city: 'ქუთაისი',
+    }
+    const controlField = { itemsTotalGel: 27730 }
+
+    const scrubbed = scrubEvent({
       event_id: 'sentinel-1',
       level: 'error',
       exception: { values: [{ type: 'Error', value: 'costings.update failed' }] },
-      extra: {
-        costing: {
-          supplierUrl: SENTINEL.supplierUrl,
-          supplierSku: SENTINEL.supplierSku,
-          costRub: SENTINEL.costRub,
-        },
-        supplier: { name: SENTINEL.supplierName },
-        order: {
-          name: SENTINEL.orderCustomerName,
-          surname: SENTINEL.orderCustomerSurname,
-          phone: SENTINEL.orderCustomerPhone,
-          email: SENTINEL.orderCustomerEmail,
-          church: SENTINEL.orderCustomerChurch,
-        },
-        ownerEmails: [{ email: SENTINEL.ownerEmail }],
-        ownerPhones: [{ phone: SENTINEL.ownerPhone }],
-      },
-    }
+      extra: { ...sensitiveFields, ...controlField },
+    } as Event)
+    const result = scrubbed.extra as Record<string, unknown>
 
-    const scrubbedJson = JSON.stringify(scrubEvent(event))
-    for (const [key, value] of Object.entries(SENTINEL)) {
-      if (key === 'filename' || key === 'shareLinkTtlDays') continue
-      expect(scrubbedJson).not.toContain(String(value))
+    for (const key of Object.keys(sensitiveFields)) {
+      expect(result[key], `expected extra.${key} to be filtered`).toBe('[Filtered]')
     }
+    expect(result.itemsTotalGel).toBe(27730)
   })
 
   it('leaves an event with no request/extra/contexts untouched', () => {
@@ -152,9 +168,34 @@ describe('scrubEvent (T5.10, ADR 0014 §11)', () => {
     expect(scrubEvent(event).request?.url).toBe('https://samkvetlo.ge/s/[token]')
   })
 
-  it('leaves a non-/s/ URL query string alone', () => {
+  // Code review finding m1: a query string can carry arbitrary user input
+  // (an admin REST `where` filter, a search box) that no key-based
+  // redaction ever inspects — e.g. `?where[phone][equals]=+995500...` puts
+  // the phone number in the *value* of a query param, not a key scrubEvent
+  // would ever see. Dropped for every URL now, not just /s/*.
+  it('drops the query string from a non-/s/ URL entirely', () => {
     const event: Event = { request: { url: 'https://samkvetlo.ge/zarebi?coating=gilding' } }
-    expect(scrubEvent(event).request?.url).toBe('https://samkvetlo.ge/zarebi?coating=gilding')
+    expect(scrubEvent(event).request?.url).toBe('https://samkvetlo.ge/zarebi')
+  })
+
+  it('drops a phone-number-carrying admin query string', () => {
+    const event: Event = {
+      request: { url: 'https://admin.samkvetlo.ge/api/orders?where[phone][equals]=+995500123456' },
+    }
+    expect(scrubEvent(event).request?.url).toBe('https://admin.samkvetlo.ge/api/orders')
+  })
+
+  // Code review finding m1: `@sentry/core`'s own request-data integration
+  // populates `query_string` as a field independent of `url` and
+  // independent of `sendDefaultPii` — so it must be dropped explicitly,
+  // not just relied on via the url-stripping above.
+  it('drops request.query_string entirely, regardless of its shape', () => {
+    const asString: Event = { request: { url: 'https://samkvetlo.ge/x', query_string: 'phone=+995500123456' } }
+    const asArray: Event = {
+      request: { url: 'https://samkvetlo.ge/x', query_string: [['phone', '+995500123456']] },
+    }
+    expect(scrubEvent(asString).request?.query_string).toBeUndefined()
+    expect(scrubEvent(asArray).request?.query_string).toBeUndefined()
   })
 })
 
