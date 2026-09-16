@@ -1,12 +1,20 @@
 import type { Breadcrumb, Event } from '@sentry/nextjs'
 
-// ADR 0014 §11: never send the request body/cookies, these headers, or a
-// value keyed by anything that looks like a customer's contact details
-// (D25/ADR 0005 — the same fields the retention cron anonymizes), wherever
-// they show up in an event. Mirrors samkvetlo/src/lib/security/scrubEvent.ts
-// (T5.10) — both repos scrub the same shapes, one Sentry org, two projects.
-const SENSITIVE_HEADERS = ['authorization', 'cookie', 'x-client-ip']
-const PII_KEY_PATTERN = /phone|email|name|surname|church|token|ownerSecret/i
+// ADR 0014 §11: never send the request body/cookies, or a value keyed by
+// anything that looks like a customer's contact details (D25/ADR 0005 —
+// the same fields the retention cron anonymizes) or supplier/costing data
+// (ADR 0005's cardinal rule), wherever they show up in an event.
+//
+// Headers are an ALLOWLIST, not a denylist (code review finding): a
+// denylist only blocks headers it was written to know about, so the very
+// first request carrying a header nobody thought to list — Vercel's own
+// `x-forwarded-for`/`x-real-ip`/`x-vercel-forwarded-for`/
+// `x-vercel-ip-country`/`x-vercel-ip-city` among them — ships straight
+// through, including on an admin request, i.e. exactly the IP/geo data
+// ADR 0016 says must never be stored. An allowlist can only ever be too
+// strict, never too permissive.
+const ALLOWED_HEADERS = ['user-agent', 'content-type', 'x-contract-version']
+const PII_KEY_PATTERN = /phone|email|name|surname|church|token|ownerSecret|supplier|costing|costRub|markup|sku/i
 
 function redactPII(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
   if (Array.isArray(value)) return value.map((item) => redactPII(item, seen))
@@ -43,7 +51,7 @@ function scrubRequest(request: Event['request']): Event['request'] {
   if (!request) return request
   const scrubbedHeaders = request.headers
     ? Object.fromEntries(
-        Object.entries(request.headers).filter(([key]) => !SENSITIVE_HEADERS.includes(key.toLowerCase())),
+        Object.entries(request.headers).filter(([key]) => ALLOWED_HEADERS.includes(key.toLowerCase())),
       )
     : request.headers
 

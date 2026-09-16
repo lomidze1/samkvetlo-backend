@@ -23,7 +23,7 @@ describe('sendAndReport', () => {
     expect(captureMessage).not.toHaveBeenCalled()
   })
 
-  it('reports "failed" with the error message and calls Sentry.captureMessage, without the message body', async () => {
+  it('reports "failed" with the raw error message in the log entry, but sends only name/code to Sentry', async () => {
     const send = vi.fn().mockRejectedValue(new Error('smtp timeout'))
     const [entry] = await sendAndReport([{ channel: 'sms', send }])
 
@@ -31,8 +31,41 @@ describe('sendAndReport', () => {
     expect(captureMessage).toHaveBeenCalledTimes(1)
     expect(captureMessage).toHaveBeenCalledWith(
       'notification failed: sms',
-      expect.objectContaining({ level: 'warning', extra: { channel: 'sms', error: 'smtp timeout' } }),
+      expect.objectContaining({ level: 'warning', extra: { channel: 'sms', name: 'Error' } }),
     )
+  })
+
+  // Code review finding: a real provider bounce routinely echoes the
+  // offending value back in its message (e.g. a bad recipient address) —
+  // that must never reach Sentry, only the log entry (admin-only, ADR
+  // 0014 §11/D25).
+  it('never sends a raw provider error message — including one containing a customer email/phone — to Sentry', async () => {
+    const providerError = new Error(
+      "Invalid 'to' field: someone@example.com is not deliverable (contact +995500123456)",
+    )
+    const send = vi.fn().mockRejectedValue(providerError)
+    const [entry] = await sendAndReport([{ channel: 'email', send }])
+
+    // The full message is still available where only the admin sees it.
+    expect(entry?.error).toContain('someone@example.com')
+
+    expect(captureMessage).toHaveBeenCalledTimes(1)
+    const [, captureArgs] = captureMessage.mock.calls[0]!
+    const sentPayload = JSON.stringify(captureArgs)
+    expect(sentPayload).not.toContain('someone@example.com')
+    expect(sentPayload).not.toContain('+995500123456')
+    expect(sentPayload).not.toContain(providerError.message)
+    expect(captureArgs.extra).toEqual({ channel: 'email', name: 'Error' })
+  })
+
+  it('forwards a provider error code (e.g. an SMTP/HTTP status) alongside the name', async () => {
+    const providerError = Object.assign(new Error('550 mailbox unavailable: jane@example.com'), { code: 550 })
+    const send = vi.fn().mockRejectedValue(providerError)
+    await sendAndReport([{ channel: 'email', send }])
+
+    const [, captureArgs] = captureMessage.mock.calls[0]!
+    expect(captureArgs.extra).toEqual({ channel: 'email', name: 'Error', code: 550 })
+    expect(JSON.stringify(captureArgs)).not.toContain('jane@example.com')
   })
 
   it('handles a non-Error rejection reason as a string', async () => {
