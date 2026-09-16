@@ -12,6 +12,8 @@ import { Costings } from '@/collections/Costings'
 import { Orders } from '@/collections/Orders'
 import { PrivateFiles } from '@/collections/PrivateFiles'
 import { ExchangeRates } from '@/collections/ExchangeRates'
+import { CustomRequests } from '@/collections/CustomRequests'
+import { ShareLinks } from '@/collections/ShareLinks'
 
 import { getPublicCategories } from '@/server/public/category'
 import { getPublicSiteSettings } from '@/server/public/siteSettings'
@@ -19,6 +21,8 @@ import { getPublicProductCards, getPublicProductBySlug } from '@/server/public/p
 import { getPublicPageBySlug } from '@/server/public/page'
 import { getPublicPortfolio, getPublicPortfolioBySlug } from '@/server/public/portfolio'
 import { getPublicDeliveryZones } from '@/server/public/deliveryZones'
+import { getPublicShareByToken } from '@/server/public/share'
+import { generateOwnerSecret, generateToken, hashOwnerSecret, hashToken } from '@/server/share/token'
 
 import { runSeed, teardownSeed } from '../../scripts/seed'
 import { SENTINEL } from '../fixtures/sentinel'
@@ -29,8 +33,14 @@ let payload: Payload
 let sentinelProductSlug: string
 let sentinelVariantId: number
 let sentinelOrderId: number | string
+let sentinelCustomRequestId: number | string
+let sentinelShareLinkId: number | string
+let sentinelShareLinkToken: string
 let pageSlugForSweep: string | null = null
-const cleanupIds: { collection: 'categories' | 'orders' | 'pages' | 'products' | 'public-files'; id: number | string }[] = []
+const cleanupIds: {
+  collection: 'categories' | 'custom-requests' | 'orders' | 'pages' | 'products' | 'public-files' | 'share-links'
+  id: number | string
+}[] = []
 
 const READ_TOKEN = process.env.SERVICE_TOKEN_READ ?? 'dev-read-token'
 
@@ -160,6 +170,51 @@ async function createSentinelOrder(variantId: number): Promise<number | string> 
   return order.id
 }
 
+/** A custom-request carrying sentinel PII in every customer-facing + internal field (D25, T3.7). */
+async function createSentinelCustomRequest(): Promise<number | string> {
+  const request = await payload.create({
+    collection: 'custom-requests',
+    data: {
+      submissionId: `sentinel-custom-request-${Date.now()}-${Math.random()}`,
+      name: SENTINEL.customRequestName,
+      surname: SENTINEL.customRequestSurname,
+      phone: SENTINEL.customRequestPhone,
+      church: SENTINEL.customRequestChurch,
+      email: SENTINEL.customRequestEmail,
+      category: 'other',
+      description: SENTINEL.customRequestDescription,
+      internalNotes: SENTINEL.customRequestInternalNotes,
+      status: 'new',
+    },
+    overrideAccess: true,
+  })
+  return request.id
+}
+
+/**
+ * A plain (non-PII) share-link — cartLines only ever carry a variantId/qty,
+ * never supplier/cost/PII data, so there's nothing to sentinel-taint here.
+ * This still exercises the one narrow overrideAccess: true lookup
+ * (src/server/public/share.ts) and its DTO key-shape allowlist.
+ */
+async function createSentinelShareLink(variantId: number): Promise<{ id: number | string; token: string }> {
+  const token = generateToken()
+  const ownerSecret = generateOwnerSecret()
+  const doc = await payload.create({
+    collection: 'share-links',
+    data: {
+      kind: 'cart',
+      tokenHash: hashToken(token),
+      ownerSecretHash: hashOwnerSecret(ownerSecret),
+      cartLines: [{ variantId, qty: 1 }],
+      expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+      viewCount: 0,
+    },
+    overrideAccess: true,
+  })
+  return { id: doc.id, token }
+}
+
 /** Reuses an existing page if one is already seeded (e.g. by pages.int.spec.ts); creates one otherwise. */
 async function ensurePageForSweep(): Promise<string | null> {
   const { docs } = await payload.find({ collection: 'pages', limit: 1, overrideAccess: true })
@@ -233,12 +288,14 @@ async function callBuiltInRestAnonymously(slugSegments: string[]): Promise<Respo
 }
 
 describe('supplier-data secrecy (ADR 0005) — T1 unit', () => {
-  it('suppliers/costings/orders/private-files/exchange-rates deny an anonymous read', async () => {
+  it('suppliers/costings/orders/private-files/exchange-rates/custom-requests/share-links deny an anonymous read', async () => {
     expect(await Suppliers.access!.read!(anonymousAccess)).toBe(false)
     expect(await Costings.access!.read!(anonymousAccess)).toBe(false)
     expect(await Orders.access!.read!(anonymousAccess)).toBe(false)
     expect(await PrivateFiles.access!.read!(anonymousAccess)).toBe(false)
     expect(await ExchangeRates.access!.read!(anonymousAccess)).toBe(false)
+    expect(await CustomRequests.access!.read!(anonymousAccess)).toBe(false)
+    expect(await ShareLinks.access!.read!(anonymousAccess)).toBe(false)
   })
 })
 
@@ -252,6 +309,10 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
     sentinelVariantId = sentinelProduct.variantId
     await setSentinelSiteSettings()
     sentinelOrderId = await createSentinelOrder(sentinelVariantId)
+    sentinelCustomRequestId = await createSentinelCustomRequest()
+    const shareLink = await createSentinelShareLink(sentinelVariantId)
+    sentinelShareLinkId = shareLink.id
+    sentinelShareLinkToken = shareLink.token
     pageSlugForSweep = await ensurePageForSweep()
   })
 
@@ -259,6 +320,12 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
     delete process.env.SEED_SENTINEL
     await resetSiteSettings()
     await payload.delete({ collection: 'orders', id: sentinelOrderId, overrideAccess: true }).catch(() => undefined)
+    await payload
+      .delete({ collection: 'custom-requests', id: sentinelCustomRequestId, overrideAccess: true })
+      .catch(() => undefined)
+    await payload
+      .delete({ collection: 'share-links', id: sentinelShareLinkId, overrideAccess: true })
+      .catch(() => undefined)
     for (const { collection, id } of cleanupIds) {
       await payload.delete({ collection, id, overrideAccess: true }).catch(() => undefined)
     }
@@ -350,6 +417,14 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
     for (const doc of documents) {
       if (doc.issuer !== SENTINEL.supplierName) assertNoSentinel('document', doc)
     }
+
+    // T3.8: the one narrow overrideAccess: true lookup (src/server/public/
+    // share.ts) — its DTO carries only variantId/qty-derived, re-priced
+    // public data, never tokenHash/ownerSecretHash/ipHash.
+    const shareDto = await getPublicShareByToken(payload, sentinelShareLinkToken)
+    expect(shareDto).toBeTruthy()
+    assertNoSentinel('share DTO', shareDto)
+    expect(Object.keys(shareDto!).sort()).toEqual(['expiresAt', 'itemsTotalGel', 'kind', 'lines'])
   })
 
   it('every /api/public/* endpoint (read token) never leaks a sentinel value', async () => {
@@ -399,6 +474,14 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
     const { documents, ...withoutDocuments } = body
     assertNoSentinel('/public/products/:slug (minus documents)', withoutDocuments)
     expect(documents.some((doc) => doc.issuer === SENTINEL.supplierName)).toBe(true)
+
+    const shareResponse = await callEndpoint(
+      '/public/share/:token',
+      { token: sentinelShareLinkToken },
+      `/public/share/${sentinelShareLinkToken}`,
+    )
+    expect(shareResponse.status).toBe(200)
+    assertNoSentinel('/public/share/:token', await shareResponse.json())
   })
 
   it('Payload\'s built-in REST, called anonymously, never leaks a sentinel value', async () => {
@@ -413,6 +496,15 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
     const ordersResponse = await callBuiltInRestAnonymously(['orders'])
     expect(ordersResponse.status).toBe(403)
     assertNoSentinel('/api/orders (403 body)', await ordersResponse.json())
+
+    // T3.7/T3.8: both new collections are admin-only, same as orders.
+    const customRequestsResponse = await callBuiltInRestAnonymously(['custom-requests'])
+    expect(customRequestsResponse.status).toBe(403)
+    assertNoSentinel('/api/custom-requests (403 body)', await customRequestsResponse.json())
+
+    const shareLinksResponse = await callBuiltInRestAnonymously(['share-links'])
+    expect(shareLinksResponse.status).toBe(403)
+    assertNoSentinel('/api/share-links (403 body)', await shareLinksResponse.json())
 
     // site-settings is public-read, but ownerEmails/ownerPhones/
     // notifyCustomer/shareLinkTtlDays are field-access-protected (ADR 0005

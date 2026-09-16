@@ -34,4 +34,12 @@ export const SENTINEL = {
   orderCustomerPhone: '+995500912345',
   orderCustomerEmail: 'zzsent-customer-7f3a@samkvetlo.invalid',
   orderCustomerChurch: 'ZZSENT-CHURCH-7f3a',
+  /** custom-requests.name / .surname / .phone / .church / .email / .description / .internalNotes (PII, D25, T3.7). */
+  customRequestName: 'ZZSENT-CR-NAME-7f3a',
+  customRequestSurname: 'ZZSENT-CR-SURNAME-7f3a',
+  customRequestPhone: '+995500911111',
+  customRequestChurch: 'ZZSENT-CR-CHURCH-7f3a',
+  customRequestEmail: 'zzsent-cr-7f3a@samkvetlo.invalid',
+  customRequestDescription: 'ZZSENT-CR-DESC-7f3a',
+  customRequestInternalNotes: 'ZZSENT-CR-NOTES-7f3a',
 } as const

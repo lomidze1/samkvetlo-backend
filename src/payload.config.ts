@@ -20,6 +20,8 @@ import { Orders } from './collections/Orders'
 import { Portfolio } from './collections/Portfolio'
 import { Pages } from './collections/Pages'
 import { DeliveryZones } from './collections/DeliveryZones'
+import { CustomRequests } from './collections/CustomRequests'
+import { ShareLinks } from './collections/ShareLinks'
 import { PricingSettings } from './globals/PricingSettings'
 import { SiteSettings } from './globals/SiteSettings'
 import { healthEndpoint } from './endpoints/public/health'
@@ -32,6 +34,12 @@ import { portfolioListEndpoint, portfolioBySlugEndpoint } from './endpoints/publ
 import { deliveryZonesEndpoint } from './endpoints/public/deliveryZones'
 import { cartQuoteEndpoint } from './endpoints/public/cartQuote'
 import { ordersEndpoint } from './endpoints/public/orders'
+import { customRequestsEndpoint } from './endpoints/public/customRequests'
+import {
+  shareLinkCreateEndpoint,
+  shareLinkRevokeEndpoint,
+  shareByTokenEndpoint,
+} from './endpoints/public/shareLinks'
 import { cronRatesEndpoint } from './endpoints/cronRates'
 
 const filename = fileURLToPath(import.meta.url)
@@ -111,6 +119,8 @@ export default buildConfig({
     Portfolio,
     Pages,
     DeliveryZones,
+    CustomRequests,
+    ShareLinks,
   ],
   globals: [PricingSettings, SiteSettings],
   editor: lexicalEditor(),
@@ -131,6 +141,10 @@ export default buildConfig({
     deliveryZonesEndpoint,
     cartQuoteEndpoint,
     ordersEndpoint,
+    customRequestsEndpoint,
+    shareLinkCreateEndpoint,
+    shareLinkRevokeEndpoint,
+    shareByTokenEndpoint,
     cronRatesEndpoint,
   ],
   graphQL: {

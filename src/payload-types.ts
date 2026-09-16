@@ -81,6 +81,8 @@ export interface Config {
     portfolio: Portfolio;
     pages: Page;
     'delivery-zones': DeliveryZone;
+    'custom-requests': CustomRequest;
+    'share-links': ShareLink;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -106,6 +108,8 @@ export interface Config {
     portfolio: PortfolioSelect<false> | PortfolioSelect<true>;
     pages: PagesSelect<false> | PagesSelect<true>;
     'delivery-zones': DeliveryZonesSelect<false> | DeliveryZonesSelect<true>;
+    'custom-requests': CustomRequestsSelect<false> | CustomRequestsSelect<true>;
+    'share-links': ShareLinksSelect<false> | ShareLinksSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -689,6 +693,97 @@ export interface DeliveryZone {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "custom-requests".
+ */
+export interface CustomRequest {
+  id: number;
+  /**
+   * ავტომატურად: REQ-2026-000123
+   */
+  number?: string | null;
+  /**
+   * იდემპოტენტობა: კლიენტზე გენერირებული UUID (ADR 0003 §5 pipeline)
+   */
+  submissionId: string;
+  name: string;
+  surname: string;
+  phone: string;
+  church: string;
+  city?: string | null;
+  email?: string | null;
+  category: 'iconostasis' | 'vestments' | 'vessels' | 'icon' | 'other';
+  product?: (number | null) | Product;
+  description: string;
+  /**
+   * მაქს. 5 ფაილი, ჯამში ≤ 4 MB (JPG/PNG/PDF)
+   */
+  attachments?: (number | PrivateFile)[] | null;
+  budgetText?: string | null;
+  deadlineText?: string | null;
+  /**
+   * ივსება ღამის cron-ით (D25) — ხელით არ ივსება
+   */
+  anonymizedAt?: string | null;
+  status: 'new' | 'contacted' | 'quoted' | 'won' | 'lost';
+  statusHistory?:
+    | {
+        from?: ('new' | 'contacted' | 'quoted' | 'won' | 'lost') | null;
+        to: 'new' | 'contacted' | 'quoted' | 'won' | 'lost';
+        by?: (number | null) | User;
+        at: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * D25: ანონიმიზაციის ათვლის წერტილი
+   */
+  statusChangedAt?: string | null;
+  internalNotes?: string | null;
+  notifications?:
+    | {
+        channel: 'email' | 'sms';
+        status: 'sent' | 'failed';
+        error?: string | null;
+        at: string;
+        id?: string | null;
+      }[]
+    | null;
+  ipHash?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "share-links".
+ */
+export interface ShareLink {
+  id: number;
+  kind: 'cart' | 'configuration';
+  /**
+   * sha256(token) — token თავად DB-ში არ ინახება (ADR 0014 §13)
+   */
+  tokenHash: string;
+  ownerSecretHash: string;
+  /**
+   * ფასის გარეშე (ADR 0011 §1) — მიმდინარე ფასი DTO-ში ცოცხლად ითვლება
+   */
+  cartLines?:
+    | {
+        variantId: number;
+        qty: number;
+        configurationId?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  expiresAt: string;
+  revokedAt?: string | null;
+  viewCount?: number | null;
+  ipHash?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -766,6 +861,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'delivery-zones';
         value: number | DeliveryZone;
+      } | null)
+    | ({
+        relationTo: 'custom-requests';
+        value: number | CustomRequest;
+      } | null)
+    | ({
+        relationTo: 'share-links';
+        value: number | ShareLink;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -1210,6 +1313,74 @@ export interface DeliveryZonesSelect<T extends boolean = true> {
   feeGel?: T;
   sortOrder?: T;
   active?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "custom-requests_select".
+ */
+export interface CustomRequestsSelect<T extends boolean = true> {
+  number?: T;
+  submissionId?: T;
+  name?: T;
+  surname?: T;
+  phone?: T;
+  church?: T;
+  city?: T;
+  email?: T;
+  category?: T;
+  product?: T;
+  description?: T;
+  attachments?: T;
+  budgetText?: T;
+  deadlineText?: T;
+  anonymizedAt?: T;
+  status?: T;
+  statusHistory?:
+    | T
+    | {
+        from?: T;
+        to?: T;
+        by?: T;
+        at?: T;
+        id?: T;
+      };
+  statusChangedAt?: T;
+  internalNotes?: T;
+  notifications?:
+    | T
+    | {
+        channel?: T;
+        status?: T;
+        error?: T;
+        at?: T;
+        id?: T;
+      };
+  ipHash?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "share-links_select".
+ */
+export interface ShareLinksSelect<T extends boolean = true> {
+  kind?: T;
+  tokenHash?: T;
+  ownerSecretHash?: T;
+  cartLines?:
+    | T
+    | {
+        variantId?: T;
+        qty?: T;
+        configurationId?: T;
+        id?: T;
+      };
+  expiresAt?: T;
+  revokedAt?: T;
+  viewCount?: T;
+  ipHash?: T;
   updatedAt?: T;
   createdAt?: T;
 }
