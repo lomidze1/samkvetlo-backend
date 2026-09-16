@@ -55,13 +55,32 @@ function isBreakGlassRequest(request: NextRequest): boolean {
   return true
 }
 
+/**
+ * Code review hardening: `/api/public/*` and `/api/cron/*` are exempt from
+ * the geo check below, so the exemption itself must never say "yes" for a
+ * path segment that could resolve to `..` somewhere downstream — even
+ * though, empirically, `NextRequest`'s own URL parsing already collapses a
+ * literal or percent-encoded `..` segment before `pathname` ever reaches
+ * this function (verified against Next 16.3.3: `/api/public/%2e%2e/users`
+ * arrives here as `/api/users`, already outside the exempt prefix). This
+ * is belt-and-suspenders against that normalization ever changing or a
+ * differently-parsed path reaching this check some other way: a segment
+ * that decodes to `..` — literal, percent-encoded, or mixed-case — makes
+ * the whole path ineligible for the exemption, falling through to the
+ * geo check (fail-closed) instead of `NextResponse.next()`.
+ */
+export function containsDotSegment(pathname: string): boolean {
+  return pathname.split('/').some((segment) => segment.replace(/%2e/gi, '.') === '..')
+}
+
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl
 
   // /api/public/* (service-token auth) and /api/cron/* (CRON_SECRET) are
   // called from outside Georgia by design (frontend server in Germany,
   // Vercel Cron) — never geo-restricted.
-  if (pathname.startsWith('/api/public/') || pathname.startsWith('/api/cron/')) {
+  const isExemptPrefix = pathname.startsWith('/api/public/') || pathname.startsWith('/api/cron/')
+  if (isExemptPrefix && !containsDotSegment(pathname)) {
     return NextResponse.next()
   }
 
