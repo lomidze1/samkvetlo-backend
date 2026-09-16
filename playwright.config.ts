@@ -6,6 +6,13 @@ import { defineConfig, devices } from '@playwright/test'
  */
 import 'dotenv/config'
 
+// Ports 3000/3001 belong to the owner's Docker stack — never run e2e
+// against them. Start the dev server yourself on another port (e.g.
+// `next dev -p 3021`) and point this at it; `reuseExistingServer` then
+// skips the `pnpm dev` webServer command below (which still hardcodes
+// 3001) instead of fighting over the port.
+const E2E_BACKEND_URL = process.env.E2E_BACKEND_URL || 'http://localhost:3001'
+
 /**
  * See https://playwright.dev/docs/test-configuration.
  */
@@ -21,8 +28,8 @@ export default defineConfig({
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
-    /* Base URL to use in actions like `await page.goto('/')`. */
-    // baseURL: 'http://localhost:3000',
+    /* Base URL to use in actions like `await page.goto('/admin')` and `request.get('/api/...')`. */
+    baseURL: E2E_BACKEND_URL,
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -36,6 +43,6 @@ export default defineConfig({
   webServer: {
     command: 'pnpm dev',
     reuseExistingServer: true,
-    url: 'http://localhost:3001',
+    url: E2E_BACKEND_URL,
   },
 })

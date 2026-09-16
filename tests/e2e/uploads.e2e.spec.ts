@@ -12,7 +12,7 @@ test.describe('uploads: size limit + private-files access (T1.1)', () => {
     // and against any upload collection — media is used here since it's public.
     const fiveMb = Buffer.alloc(5_000_000, 1)
 
-    const response = await request.post('http://localhost:3001/api/media', {
+    const response = await request.post('/api/media', {
       multipart: {
         file: {
           name: 'big.jpg',
@@ -29,7 +29,7 @@ test.describe('uploads: size limit + private-files access (T1.1)', () => {
   test('anonymous GET /api/private-files/file/<name> is rejected (401/403)', async ({ request }) => {
     const { id, filename } = await seedPrivateFile()
     try {
-      const response = await request.get(`http://localhost:3001/api/private-files/file/${filename}`)
+      const response = await request.get(`/api/private-files/file/${filename}`)
       expect([401, 403]).toContain(response.status())
     } finally {
       await cleanupPrivateFile(id)

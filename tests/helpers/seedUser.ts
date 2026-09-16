@@ -3,7 +3,8 @@ import config from '../../src/payload.config.js'
 
 export const testUser = {
   email: 'dev@payloadcms.com',
-  password: 'test',
+  // ADR 0014 §4 (T5.9): >= 16 chars, enforced by the beforeValidate hook.
+  password: 'e2e-test-password-16',
 }
 
 /**
