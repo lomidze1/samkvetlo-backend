@@ -40,10 +40,12 @@ Vercel dashboard → backend პროექტი → **Firewall** → Custom R
 ## რა ხდება ავტომატურად
 
 - `src/proxy.ts`-ის geo-შემოწმება `/api/public/*`-სა და `/api/cron/*`-ს არასოდეს ეხება.
-- ნებისმიერი შესვლა, სადაც `x-vercel-ip-country ≠ GE` (ანუ break-glass-ით მოხდა),
-  ავტომატურად წერს ჩანაწერს **`audit-events`** კოლექციაში (`login.break-glass`,
-  ადმინში ხილული, IP-ის გარეშე) და უგზავნის email-ს `site-settings`-ის ყველა
-  `ownerEmails`-ს (`Users.hooks.afterLogin`, `src/collections/hooks/breakGlassAudit.ts`).
+- ყოველი შესვლა წერს ჩანაწერს **`audit-events`** კოლექციაში (`Users.hooks.afterLogin`,
+  `src/collections/hooks/loginAudit.ts`) — არა მხოლოდ break-glass-ისას (ADR 0014 §4
+  fallback: მოპარული პაროლი საქართველოდანაც უნდა ჩანდეს). სადაც `x-vercel-ip-country ≠ GE`
+  (ანუ break-glass-ით მოხდა), ტიპი არის `login.break-glass` და დამატებით იგზავნება email
+  `site-settings`-ის ყველა `ownerEmails`-ზე; სხვა შემთხვევაში (`GE` ან header არ არსებობს) —
+  `login.success`, email-ის გარეშე. არცერთ ჩანაწერში IP არ ინახება.
 - `src/proxy.ts` წერს `console.warn('[break-glass]', { path })`-ს (IP-ის გარეშე) —
   ჩანს Vercel-ის ლოგებში.
 

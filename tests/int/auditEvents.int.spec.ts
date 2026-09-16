@@ -1,7 +1,10 @@
-// ADR 0016 (T5.14): break-glass audit trail. The header check lives in
-// Users.hooks.afterLogin (src/collections/hooks/breakGlassAudit.ts), which
-// only ever sees `x-vercel-ip-country` on a real REST login request — so
-// this exercises the actual REST route (like secrecy.int.spec.ts's
+// ADR 0014 §4 fallback (TOTP spike failed, T5.9) + ADR 0016 (T5.14): every
+// successful login is audited (src/collections/hooks/loginAudit.ts) — not
+// just break-glass ones — because a stolen password used from inside
+// Georgia produces zero signal under geo + lockout alone. The header check
+// lives in Users.hooks.afterLogin, which only ever sees
+// `x-vercel-ip-country` on a real REST login request — so this exercises
+// the actual REST route (like secrecy.int.spec.ts's
 // `callBuiltInRestAnonymously`), not the local API.
 // @vitest-environment node
 import { getPayload, type Payload } from 'payload'
@@ -10,7 +13,7 @@ import config from '@/payload.config'
 
 import { memoryEmailSender } from '@/server/notify/memoryAdapter'
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 let payload: Payload
 
@@ -40,7 +43,7 @@ async function auditEventsForUser(userId: number | string): Promise<number> {
   return totalDocs
 }
 
-describe('audit-events (ADR 0016, T5.14)', () => {
+describe('audit-events (ADR 0014 §4 fallback, ADR 0016, T5.14)', () => {
   let userId: number
 
   beforeAll(async () => {
@@ -79,7 +82,7 @@ describe('audit-events (ADR 0016, T5.14)', () => {
     await payload.delete({ collection: 'users', id: userId, overrideAccess: true })
   })
 
-  it('a login with a non-GE x-vercel-ip-country writes one audit-events record (no IP) and one owner email', async () => {
+  it('a login with a non-GE x-vercel-ip-country writes one login.break-glass record (no IP) and one owner email', async () => {
     const response = await login('DE')
     expect(response.status).toBe(200)
 
@@ -99,20 +102,57 @@ describe('audit-events (ADR 0016, T5.14)', () => {
     expect(memoryEmailSender.sent[0].text).not.toMatch(/\d+\.\d+\.\d+\.\d+/)
   })
 
-  it('a login with x-vercel-ip-country: GE writes no audit-events record and sends no email', async () => {
+  it('a login with x-vercel-ip-country: GE writes one login.success record and sends no email', async () => {
     const response = await login('GE')
     expect(response.status).toBe(200)
 
-    expect(await auditEventsForUser(userId)).toBe(0)
+    expect(await auditEventsForUser(userId)).toBe(1)
+
+    const { docs } = await payload.find({
+      collection: 'audit-events',
+      where: { user: { equals: userId } },
+      overrideAccess: true,
+      limit: 1,
+    })
+    expect(docs[0]).toMatchObject({ type: 'login.success', country: 'GE' })
+
     expect(memoryEmailSender.sent).toHaveLength(0)
   })
 
-  it('a login with no x-vercel-ip-country header (local/Docker/test-style request) writes no audit-events record', async () => {
+  it('a login with no x-vercel-ip-country header (local/Docker/test-style request) writes exactly one login.success row and sends no email', async () => {
     const response = await login(null)
     expect(response.status).toBe(200)
 
-    expect(await auditEventsForUser(userId)).toBe(0)
+    expect(await auditEventsForUser(userId)).toBe(1)
+
+    const { docs } = await payload.find({
+      collection: 'audit-events',
+      where: { user: { equals: userId } },
+      overrideAccess: true,
+      limit: 1,
+    })
+    expect(docs[0]?.type).toBe('login.success')
+    expect(docs[0]?.country).toBeFalsy()
+
     expect(memoryEmailSender.sent).toHaveLength(0)
+  })
+
+  it('a failing audit-events write does not block the login', async () => {
+    const originalCreate = payload.create.bind(payload)
+    const createSpy = vi.spyOn(payload, 'create').mockImplementation(async (args) => {
+      if (args.collection === 'audit-events') throw new Error('boom')
+      return originalCreate(args)
+    })
+    const loggerSpy = vi.spyOn(payload.logger, 'error').mockImplementation(() => undefined)
+
+    try {
+      const response = await login('GE')
+      expect(response.status).toBe(200)
+      expect(loggerSpy).toHaveBeenCalled()
+    } finally {
+      createSpy.mockRestore()
+      loggerSpy.mockRestore()
+    }
   })
 
   it('an anonymous GET /api/audit-events is rejected with 403', async () => {
