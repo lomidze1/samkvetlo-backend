@@ -114,6 +114,9 @@ export default buildConfig({
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   serverURL: process.env.BACKEND_URL,
+  // ADR 0014 §4: default is 10 — narrowed so a relationship/upload field
+  // can't accidentally pull in several extra hops of populated documents.
+  maxDepth: 3,
   cors: [],
   csrf: [process.env.BACKEND_URL].filter((value): value is string => Boolean(value)),
   endpoints: [

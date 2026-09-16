@@ -51,7 +51,7 @@ describe('site-settings global (T1.5, ADR 0005 layer 2 / ADR 0007)', () => {
   it('an admin read includes ownerEmails/ownerPhones', async () => {
     const admin = await payload.create({
       collection: 'users',
-      data: { email: `site-settings-admin-${Date.now()}@samkvetlo.local`, password: 'test-password' },
+      data: { email: `site-settings-admin-${Date.now()}@samkvetlo.local`, password: 'test-password-16chars' },
     })
     try {
       const settings = await payload.findGlobal({

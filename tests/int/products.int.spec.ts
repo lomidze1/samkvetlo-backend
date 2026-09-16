@@ -149,7 +149,7 @@ describe('products + variants (T1.3, ADR 0002 / 0009)', () => {
     // only the field-level access.update lock does that (ADR 0006 §4).
     const admin = await payload.create({
       collection: 'users',
-      data: { email: `test-admin-${Date.now()}@samkvetlo.local`, password: 'test-password' },
+      data: { email: `test-admin-${Date.now()}@samkvetlo.local`, password: 'test-password-16chars' },
     })
     adminUserIds.push(admin.id)
 

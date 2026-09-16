@@ -53,12 +53,13 @@ export function toPublicCategoryRef(category: Category | number | null | undefin
 }
 
 /**
- * T2.4: `/zarebi` must list a bell filed under its child category
- * (`საეკლესიო ზარები`), not just products assigned to `zarebi` itself —
- * otherwise a parent category with only sub-categorized products silently
- * shows empty (the same class of bug as the home page's "ჭურჭელი 0 ნივთი").
- * Returns the matched category's own id plus every descendant's, or `null`
- * for an unknown slug (the caller 404s / returns an empty page on `null`).
+ * T2.4: `/zarebi` must list a bell filed under its child category (the
+ * "church bells" child of the bells category), not just products assigned
+ * to `zarebi` itself — otherwise a parent category with only
+ * sub-categorized products silently shows empty (the same class of bug as
+ * the home page's empty-count regression). Returns the matched category's
+ * own id plus every descendant's, or `null` for an unknown slug (the
+ * caller 404s / returns an empty page on `null`).
  */
 export async function resolveCategorySubtreeIds(payload: Payload, slug: string): Promise<number[] | null> {
   const { docs } = await payload.find({

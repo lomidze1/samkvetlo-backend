@@ -1,6 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 import { isAdmin } from '../access/isAdmin'
+import { enforcePasswordMinLength } from './hooks/passwordPolicy'
 
 export const Users: CollectionConfig = {
   slug: 'users',
@@ -13,7 +14,20 @@ export const Users: CollectionConfig = {
     update: isAdmin,
     delete: isAdmin,
   },
-  auth: true,
+  // ADR 0014 §4: named accounts only, lockout after 5 failed attempts,
+  // secure cookies in production.
+  auth: {
+    maxLoginAttempts: 5,
+    lockTime: 15 * 60 * 1000,
+    tokenExpiration: 7200,
+    cookies: {
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Lax',
+    },
+  },
+  hooks: {
+    beforeValidate: [enforcePasswordMinLength],
+  },
   fields: [
     // Email added by default
     // Add more fields as needed

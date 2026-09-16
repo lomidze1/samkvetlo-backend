@@ -148,7 +148,7 @@ describe('orders collection (T1.7, ADR 0003/0005/0015, ADR 0014 §12)', () => {
 
     const admin = await payload.create({
       collection: 'users',
-      data: { email: `orders-admin-${Date.now()}@samkvetlo.local`, password: 'test-password' },
+      data: { email: `orders-admin-${Date.now()}@samkvetlo.local`, password: 'test-password-16chars' },
     })
     userIds.push(admin.id)
 
@@ -196,7 +196,7 @@ describe('orders collection (T1.7, ADR 0003/0005/0015, ADR 0014 §12)', () => {
 
     const admin = await payload.create({
       collection: 'users',
-      data: { email: `orders-admin2-${Date.now()}@samkvetlo.local`, password: 'test-password' },
+      data: { email: `orders-admin2-${Date.now()}@samkvetlo.local`, password: 'test-password-16chars' },
     })
     userIds.push(admin.id)
 
