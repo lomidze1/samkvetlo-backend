@@ -61,3 +61,29 @@ ALTER DEFAULT PRIVILEGES FOR ROLE samkvetlo_owner IN SCHEMA public
 -- samkvetlo_app and samkvetlo_backup intentionally get no CREATE on the
 -- schema and no ownership of anything — that absence is what makes
 -- `CREATE TABLE ...` fail for them (verified in T5.13's report).
+
+-- Code review finding (ADR 0014 §9): the blanket UPDATE/DELETE grant above
+-- also covers `audit_events` (login/break-glass trail, ADR 0016), which
+-- means a compromised runtime (samkvetlo_app) could erase its own login
+-- history — exactly what role separation is supposed to prevent. The app
+-- only ever *creates* audit rows (Users.hooks.afterLogin); it never
+-- updates or deletes one (AuditEvents.access: update/delete both `() =>
+-- false` at the Payload layer already, this is the same rule enforced one
+-- layer down, at the database). REVOKE is a no-op (not an error) if the
+-- privilege was never granted, so this is safe on a fresh database too.
+-- Add the same REVOKE here for any future collection that is meant to be
+-- an append-only audit trail.
+--
+-- Guarded (not a bare REVOKE): this file is meant to be runnable *before*
+-- the first `payload migrate` too (a truly fresh database), when
+-- `audit_events` doesn't exist yet — a bare `REVOKE ... ON audit_events`
+-- would error in that case instead of being the no-op every other
+-- statement in this file is when its target doesn't exist yet. Re-run
+-- this file after migrating to actually apply the revoke.
+DO $$
+BEGIN
+  IF to_regclass('public.audit_events') IS NOT NULL THEN
+    EXECUTE 'REVOKE UPDATE, DELETE ON audit_events FROM samkvetlo_app';
+  END IF;
+END
+$$;
