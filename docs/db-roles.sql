@@ -98,6 +98,12 @@ ALTER DEFAULT PRIVILEGES FOR ROLE samkvetlo_owner IN SCHEMA public
 -- whatever ran this (psql, a migration script, CI logs), and re-run this
 -- file after migrating (see the RUN ORDER note at the top) to actually
 -- apply the revoke.
+-- Round-3 follow-up: this REVOKE is per-object, not per-name. If a future
+-- migration ever DROPs and re-CREATEs `audit_events` (e.g. a breaking
+-- schema change, rather than an in-place ALTER), the new table is a new
+-- object that only inherits the ALTER DEFAULT PRIVILEGES grant above
+-- (SELECT/INSERT/UPDATE/DELETE) — this REVOKE does not carry over and
+-- must be re-run, or samkvetlo_app silently regains UPDATE/DELETE on it.
 DO $$
 BEGIN
   IF to_regclass('public.audit_events') IS NOT NULL THEN
