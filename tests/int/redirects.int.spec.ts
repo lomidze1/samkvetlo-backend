@@ -232,6 +232,55 @@ describe('slug redirects (T5.4)', () => {
     expect(owners.map((doc) => doc.id)).toEqual([aId])
   })
 
+  it('code review round 3: a stale version row cannot resurrect a slug into TWO docs\' oldSlugs', async () => {
+    const suffix = `${Date.now()}-${Math.random()}`
+    const category = await createCategory(`redirect-cat-r3-${suffix}`)
+
+    // B: created with slug X, renamed to Y (retires X onto B.oldSlugs, on
+    // both B's main row and its version row — nothing stale yet).
+    const bId = await createProduct(`Redirect R3 X ${suffix}`, category.id, true)
+    const slugX = (await payload.findByID({ collection: 'products', id: bId, overrideAccess: true })).slug!
+    await renameProduct(bId, `Redirect R3 Y ${suffix}`)
+
+    // A reuses X live — cross-doc cleanup clears B's *main row* oldSlugs
+    // (db.updateOne), but B's version row still has oldSlugs = [X].
+    const aId = await createProduct(`Redirect R3 X ${suffix}`, category.id, true)
+
+    // A is renamed away from X — A.oldSlugs becomes [X] (A was, a moment
+    // ago, genuinely live with X, so it's the correct owner). At this
+    // point nothing has re-saved B, so B's version row is still stale.
+    const slugW = await renameProduct(aId, `Redirect R3 W ${suffix}`)
+    const aAfterRename = await payload.findByID({ collection: 'products', id: aId, overrideAccess: true })
+    expect((aAfterRename.oldSlugs ?? []).map((entry) => entry.slug)).toEqual([slugX])
+
+    // An UNRELATED save on B. Without checking other docs' oldSlugs (not
+    // just their live slug) in the self-heal, B's stale version-row base
+    // would restore oldSlugs = [X] here too — putting X in both A's and
+    // B's oldSlugs, and the `-updatedAt` sort would then hand a visitor to
+    // B (saved last) instead of A (the doc that actually held X live most
+    // recently).
+    await payload.update({
+      collection: 'products',
+      id: bId,
+      data: { featured: true },
+      overrideAccess: true,
+    })
+
+    const bAfterUnrelatedSave = await payload.findByID({ collection: 'products', id: bId, overrideAccess: true })
+    expect(bAfterUnrelatedSave.featured).toBe(true)
+    expect((bAfterUnrelatedSave.oldSlugs ?? []).map((entry) => entry.slug)).not.toContain(slugX)
+
+    // X belongs to exactly one doc — A — and resolves there.
+    const { docs: owners } = await payload.find({
+      collection: 'products',
+      where: { or: [{ slug: { equals: slugX } }, { 'oldSlugs.slug': { equals: slugX } }] },
+      overrideAccess: true,
+      depth: 0,
+    })
+    expect(owners.map((doc) => doc.id)).toEqual([aId])
+    expect(await resolvePublicRedirect(payload, 'product', slugX)).toBe(`/product/${slugW}`)
+  })
+
   it('product: an unpublished product leaks no redirect', async () => {
     const suffix = `${Date.now()}-${Math.random()}`
     const category = await createCategory(`redirect-cat-draft-${suffix}`)
