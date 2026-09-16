@@ -1,7 +1,7 @@
 // SOURCE OF TRUTH — copied to samkvetlo by pnpm shared:sync (ADR 0012 §3, ADR 0014 §5, ADR 0015)
 import { z } from 'zod'
 
-import { CartLineInputSchema } from './cart'
+import { CART_MAX_LINES, CartLineInputSchema } from './cart'
 import { PhoneSchema } from './phone'
 
 // ADR 0014 §5: NFC + trim, control characters rejected. Every zod issue
@@ -72,7 +72,7 @@ export const OrderInputSchema = z.strictObject({
   city: optionalText(60),
   email: optionalEmail(),
   comment: optionalText(1000),
-  lines: z.array(CartLineInputSchema).min(1, 'required').max(30, 'tooLong'),
+  lines: z.array(CartLineInputSchema).min(1, 'required').max(CART_MAX_LINES, 'tooLong'),
   submissionId: z.uuid('invalid'),
   turnstileToken: z.string({ error: 'required' }).min(1, 'required'),
 })

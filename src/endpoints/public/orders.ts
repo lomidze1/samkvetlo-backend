@@ -7,6 +7,7 @@ export const ordersEndpoint = publicEndpoint({
   path: '/public/orders',
   method: 'post',
   scope: 'write',
+  requireClientIp: true,
   input: OrderInputSchema,
   output: OrderResultSchema,
   handler: async (req, input) =>

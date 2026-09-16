@@ -15,6 +15,7 @@ export const shareLinkCreateEndpoint = publicEndpoint({
   path: '/public/share-links',
   method: 'post',
   scope: 'write',
+  requireClientIp: true,
   input: ShareLinkCreateInputSchema,
   output: ShareLinkCreateResultSchema,
   handler: async (req, input) => createShareLink(req.payload, input, { ipHash: ipHashFromRequest(req) }),

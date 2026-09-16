@@ -237,4 +237,12 @@ describe('share-links (T3.8, ADR 0011 §1, ADR 0014 §2/§13)', () => {
     expect((await shareLinkCreateEndpoint.handler(fakeReq(readAuth))).status).toBe(403)
     expect((await shareLinkRevokeEndpoint.handler(fakeReq(readAuth))).status).toBe(403)
   })
+
+  it('(8) a missing x-client-ip on create is rejected (400 err.clientIp.missing) — MAJOR 1', async () => {
+    const writeAuth = fakeReq({ headers: new Headers({ authorization: `Bearer ${process.env.SERVICE_TOKEN_WRITE}` }) })
+    const response = await shareLinkCreateEndpoint.handler(writeAuth)
+    expect(response.status).toBe(400)
+    const body = (await response.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('err.clientIp.missing')
+  })
 })

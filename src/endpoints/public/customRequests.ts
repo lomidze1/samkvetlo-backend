@@ -23,6 +23,7 @@ export const customRequestsEndpoint = publicEndpoint({
   path: '/public/custom-requests',
   method: 'post',
   scope: 'write',
+  requireClientIp: true,
   input: CustomRequestInputSchema,
   output: CustomRequestResultSchema,
   handler: async (req, input) =>

@@ -4,10 +4,15 @@ import { z } from 'zod'
 import { PublicImageSchema } from './image'
 import { AVAILABILITY_VALUES } from './product'
 
-// ADR 0014 §5: cart <= 30 lines, qty 1-20.
+// ADR 0014 §5: cart <= 30 lines, qty 1-20. Exported so the frontend's cart
+// store (localStorage, T3.1) can clamp to the same limits instead of
+// duplicating the numbers (review finding MAJOR 2).
+export const CART_LINE_MAX_QTY = 20
+export const CART_MAX_LINES = 30
+
 export const CartLineInputSchema = z.strictObject({
   variantId: z.number().int().positive(),
-  qty: z.number().int().min(1).max(20),
+  qty: z.number().int().min(1).max(CART_LINE_MAX_QTY),
   // T4.9 (not built yet): a line with a configurationId is quoted as
   // unavailable for now (Configurations collection arrives in Phase 4).
   configurationId: z.string().min(1).optional(),
@@ -15,7 +20,7 @@ export const CartLineInputSchema = z.strictObject({
 export type CartLineInput = z.infer<typeof CartLineInputSchema>
 
 export const CartQuoteInputSchema = z.strictObject({
-  lines: z.array(CartLineInputSchema).min(1).max(30),
+  lines: z.array(CartLineInputSchema).min(1).max(CART_MAX_LINES),
   deliveryZone: z.string().min(1).optional(),
 })
 export type CartQuoteInput = z.infer<typeof CartQuoteInputSchema>

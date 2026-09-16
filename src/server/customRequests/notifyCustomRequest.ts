@@ -20,9 +20,25 @@ function adminCustomRequestUrl(id: number | string): string {
  * only (no customer channel, unlike orders — the owner calls the client
  * back). Fires after the request is already saved; every channel is
  * wrapped in Promise.allSettled so an adapter exception never fails the
- * submission. Result written to customRequest.notifications[].
+ * submission. Result written to customRequest.notifications[]. This whole
+ * function also can't throw into `submitCustomRequest` (review finding
+ * MINOR 3): `findGlobal` and everything else here used to run outside any
+ * try/catch, so a transient failure there turned an already-saved request
+ * into a 500 with no request number shown to the customer. The outer catch
+ * logs only the request id/number — never PII.
  */
 export async function notifyCustomRequestCreated(payload: Payload, request: CustomRequest): Promise<void> {
+  try {
+    await sendCustomRequestNotifications(payload, request)
+  } catch (err: unknown) {
+    payload.logger.error(
+      { err, requestId: request.id, requestNumber: request.number },
+      'notifyCustomRequestCreated failed',
+    )
+  }
+}
+
+async function sendCustomRequestNotifications(payload: Payload, request: CustomRequest): Promise<void> {
   const settings = await payload.findGlobal({ slug: 'site-settings', overrideAccess: true })
   const ownerEmails = (settings.ownerEmails ?? [])
     .map((entry) => entry.email)

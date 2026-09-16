@@ -249,6 +249,15 @@ describe('submitOrder (T3.3, ADR 0003 §4 + updates, ADR 0015 §3-4)', () => {
     expect(response.status).toBe(403)
   })
 
+  it('(5b) a missing x-client-ip is rejected (400 err.clientIp.missing) — MAJOR 1', async () => {
+    const response = await ordersEndpoint.handler(
+      fakeReq({ headers: new Headers({ authorization: `Bearer ${process.env.SERVICE_TOKEN_WRITE}` }) }),
+    )
+    expect(response.status).toBe(400)
+    const body = (await response.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('err.clientIp.missing')
+  })
+
   it('(6) a 200 ₾ zone freezes deliveryZone/deliveryFeeGel/totalGel on the order; a 0 ₾ zone freezes 0', async () => {
     const variantId = await createPurchasableVariant()
     const variant = await payload.findByID({ collection: 'variants', id: variantId, depth: 0 })
@@ -316,5 +325,26 @@ describe('submitOrder (T3.3, ADR 0003 §4 + updates, ADR 0015 §3-4)', () => {
 
     // restore, so a re-run of test (6)/(8) against the same zone id sees 200 again
     await payload.update({ collection: 'delivery-zones', id: zone.id, data: { feeGel: 200 }, overrideAccess: true })
+  })
+
+  it('(9) a throwing notification step (findGlobal) still returns the order number — MINOR 3', async () => {
+    const variantId = await createPurchasableVariant()
+    const findGlobalSpy = vi.spyOn(payload, 'findGlobal').mockRejectedValueOnce(new Error('site-settings unavailable'))
+
+    let result: Awaited<ReturnType<typeof submitOrder>>
+    try {
+      result = await submitOrder(
+        payload,
+        baseInput({ lines: [{ variantId, qty: 1 }] }),
+        { ipHash: `ip-${counter}-j`, clientIp: '6.6.6.6' },
+      )
+    } finally {
+      findGlobalSpy.mockRestore()
+    }
+
+    expect(result.number).toMatch(/^SMK-\d{4}-\d{6}$/)
+    const order = (await payload.find({ collection: 'orders', where: { number: { equals: result.number } }, overrideAccess: true })).docs[0]!
+    orderIds.push(order.id)
+    expect(order.notifications ?? []).toHaveLength(0)
   })
 })

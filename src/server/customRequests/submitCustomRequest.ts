@@ -42,6 +42,22 @@ async function createAttachmentDocs(payload: Payload, files: ValidatedAttachment
 }
 
 /**
+ * MINOR 4: attachments are uploaded before the `custom-requests` row that
+ * references them, so a failed (or race-lost) create leaves them
+ * unlinked — T5.12's anonymisation sweep only ever looks at a request's
+ * own `attachments[]`, so an orphan would never be found or deleted.
+ * Best-effort: a delete failure here is logged, never thrown (the caller
+ * is already unwinding its own error/return path).
+ */
+async function deleteAttachmentDocs(payload: Payload, ids: number[]): Promise<void> {
+  for (const id of ids) {
+    await payload.delete({ collection: 'private-files', id, overrideAccess: true }).catch((err: unknown) => {
+      payload.logger.error({ err, attachmentId: id }, 'submitCustomRequest: failed to delete orphaned attachment')
+    })
+  }
+}
+
+/**
  * T3.7 (ADR 0011 §3, ADR 0003 §4's pipeline order + its ADR 0012 §4 update).
  * Step order: idempotency -> Turnstile -> rate limit -> attachments ->
  * create -> notify. Every non-2xx outcome after the zod input schema is a
@@ -107,7 +123,10 @@ export async function submitCustomRequest(
   } catch (err) {
     // A concurrent double-submit can race past the check above — the DB's
     // unique constraint on submissionId is the real guard (ADR 0003 §5).
+    // Either way this call's own attachments never got linked to a
+    // request, so they'd otherwise be orphaned (MINOR 4).
     const raced = await findBySubmissionId(payload, input.submissionId)
+    await deleteAttachmentDocs(payload, attachmentIds)
     if (raced) return { number: raced.number ?? '' }
     throw err
   }

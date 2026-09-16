@@ -3,6 +3,7 @@ import type { z, ZodType } from 'zod'
 
 import { CONTRACT_VERSION, ErrorSchema } from '../../shared/contract'
 import { checkServiceAuth, type ServiceScope } from '../../server/security/serviceAuth'
+import { clientIpFromRequest } from '../../server/security/ipHash'
 
 type HttpMethod = 'connect' | 'delete' | 'get' | 'head' | 'options' | 'patch' | 'post' | 'put'
 
@@ -14,6 +15,13 @@ interface PublicEndpointConfig<Output extends ZodType, Input extends ZodType | u
   /** When set, the JSON body is parsed and validated before the handler runs (T3.1/T3.3). */
   input?: Input
   output: Output
+  /**
+   * Set for a write-scope endpoint whose handler calls `ipHashFromRequest`
+   * (rate limiting) — a missing/empty `x-client-ip` would otherwise hash to
+   * the same bucket for every caller instead of failing closed (ADR 0014
+   * §2, review finding MAJOR 1).
+   */
+  requireClientIp?: boolean
   handler: (
     req: PayloadRequest,
     input: Input extends ZodType ? z.infer<Input> : undefined,
@@ -91,6 +99,10 @@ export function publicEndpoint<Output extends ZodType, Input extends ZodType | u
       }
       if (auth === 'forbidden') {
         return errorResponse('err.forbidden', 403)
+      }
+
+      if (config.requireClientIp && !clientIpFromRequest(req)) {
+        return errorResponse('err.clientIp.missing', 400)
       }
 
       let input: z.infer<NonNullable<Input>> | undefined

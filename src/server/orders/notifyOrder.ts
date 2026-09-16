@@ -18,10 +18,21 @@ function adminOrderUrl(orderId: number | string): string {
 /**
  * ADR 0007 §4/§6: fires after the order is already saved. Every channel is
  * wrapped in Promise.allSettled — an adapter exception never fails the
- * order (submitOrder calls this without a try/catch around it). The result
- * of each attempt is written to order.notifications[] (channel/status/error/at).
+ * order. This whole function also can't throw into `submitOrder` itself
+ * (review finding MINOR 3): `findGlobal` and everything else here used to
+ * run outside any try/catch, so a transient failure there turned an
+ * already-saved order into a 500 with no order number shown to the
+ * customer. The outer catch logs only the order id/number — never PII.
  */
 export async function notifyOrderCreated(payload: Payload, order: Order): Promise<void> {
+  try {
+    await sendOrderNotifications(payload, order)
+  } catch (err: unknown) {
+    payload.logger.error({ err, orderId: order.id, orderNumber: order.number }, 'notifyOrderCreated failed')
+  }
+}
+
+async function sendOrderNotifications(payload: Payload, order: Order): Promise<void> {
   const settings = await payload.findGlobal({ slug: 'site-settings', overrideAccess: true })
   const ownerEmails = (settings.ownerEmails ?? [])
     .map((entry) => entry.email)

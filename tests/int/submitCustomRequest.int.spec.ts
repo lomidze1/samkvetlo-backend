@@ -273,6 +273,15 @@ describe('submitCustomRequest (T3.7, ADR 0011 §3 + ADR 0003 §4 pipeline order)
     expect(response.status).toBe(403)
   })
 
+  it('(9b) a missing x-client-ip is rejected (400 err.clientIp.missing) — MAJOR 1', async () => {
+    const response = await customRequestsEndpoint.handler(
+      fakeReq({ headers: new Headers({ authorization: `Bearer ${process.env.SERVICE_TOKEN_WRITE}` }) }),
+    )
+    expect(response.status).toBe(400)
+    const body = (await response.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('err.clientIp.missing')
+  })
+
   it('(10) a valid published-product slug links the request to that product', async () => {
     const product = await createProduct('published')
     const result = await submitCustomRequest(payload, baseInput({ product: product.slug! }), [], {
@@ -312,5 +321,51 @@ describe('submitCustomRequest (T3.7, ADR 0011 §3 + ADR 0003 §4 pipeline order)
       await payload.find({ collection: 'custom-requests', where: { number: { equals: result.number } }, depth: 0, overrideAccess: true })
     ).docs[0]!
     expect(doc.product ?? null).toBeNull()
+  })
+
+  it('(13) if the custom-requests create fails, its just-uploaded attachment is deleted (not orphaned) — MINOR 4', async () => {
+    const pdf = await loadFixture('sample.pdf')
+    const originalCreate = payload.create.bind(payload)
+    const createdAttachmentIds: (number | string)[] = []
+    const createSpy = vi.spyOn(payload, 'create').mockImplementation(async (args: Parameters<Payload['create']>[0]) => {
+      if (args.collection === 'custom-requests') throw new Error('db down')
+      const doc = await originalCreate(args)
+      if (args.collection === 'private-files') createdAttachmentIds.push(doc.id)
+      return doc
+    })
+
+    try {
+      await expect(
+        submitCustomRequest(payload, baseInput(), [{ data: pdf, name: 'certificate.pdf' }], {
+          ipHash: 'cr-ip-13',
+          clientIp: '13.13.13.13',
+        }),
+      ).rejects.toThrow('db down')
+    } finally {
+      createSpy.mockRestore()
+    }
+
+    expect(createdAttachmentIds).toHaveLength(1)
+    await expect(
+      payload.findByID({ collection: 'private-files', id: createdAttachmentIds[0]!, overrideAccess: true }),
+    ).rejects.toBeTruthy()
+  })
+
+  it('(14) a throwing notification step (findGlobal) still returns the request number — MINOR 3', async () => {
+    const findGlobalSpy = vi.spyOn(payload, 'findGlobal').mockRejectedValueOnce(new Error('site-settings unavailable'))
+
+    let result: Awaited<ReturnType<typeof submitCustomRequest>>
+    try {
+      result = await submitCustomRequest(payload, baseInput(), [], { ipHash: 'cr-ip-13', clientIp: '13.13.13.13' })
+    } finally {
+      findGlobalSpy.mockRestore()
+    }
+    await trackRequestAttachments(result.number)
+
+    expect(result.number).toMatch(/^REQ-\d{4}-\d{6}$/)
+    const doc = (
+      await payload.find({ collection: 'custom-requests', where: { number: { equals: result.number } }, depth: 0, overrideAccess: true })
+    ).docs[0]!
+    expect(doc.notifications ?? []).toHaveLength(0)
   })
 })
