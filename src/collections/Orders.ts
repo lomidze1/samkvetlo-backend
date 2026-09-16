@@ -58,6 +58,19 @@ export const Orders: CollectionConfig = {
       admin: { description: 'იდემპოტენტობა: კლიენტზე გენერირებული UUID (ADR 0003 §5)' },
     },
 
+    // T3.5, ADR 0007 §6: ⚠ when any notifications[] entry failed. Virtual
+    // field (no DB column) placed at the top so it's the first thing seen.
+    {
+      name: 'notificationsWarning',
+      type: 'ui',
+      label: 'შეტყობინებების გაფრთხილება',
+      admin: {
+        components: {
+          Field: '/components/admin/FailedNotificationsWarning#FailedNotificationsWarning',
+        },
+      },
+    },
+
     // Client (D25: anonymized 2 years after statusChangedAt).
     { name: 'name', type: 'text', required: true, label: 'სახელი' },
     { name: 'surname', type: 'text', required: true, label: 'გვარი' },
@@ -80,13 +93,44 @@ export const Orders: CollectionConfig = {
       required: true,
       minRows: 1,
       label: 'ნივთები',
+      admin: {
+        components: {
+          RowLabel: '/components/admin/OrderItemRowLabel#OrderItemRowLabel',
+        },
+      },
       fields: [
-        { name: 'variant', type: 'relationship', relationTo: 'variants', required: true, label: 'ვარიანტი' },
-        { name: 'productTitle', type: 'text', required: true, label: 'პროდუქტის სახელი' },
-        { name: 'variantTitle', type: 'text', required: true, label: 'ვარიანტის სახელი' },
-        { name: 'sku', type: 'text', required: true, label: 'SKU' },
-        { name: 'unitPrice', type: 'number', required: true, min: 0, label: 'ერთეულის ფასი (₾)' },
-        { name: 'qty', type: 'number', required: true, min: 1, label: 'რაოდენობა' },
+        {
+          name: 'variant',
+          type: 'relationship',
+          relationTo: 'variants',
+          required: true,
+          label: 'ვარიანტი',
+          admin: { readOnly: true },
+        },
+        {
+          name: 'productTitle',
+          type: 'text',
+          required: true,
+          label: 'პროდუქტის სახელი',
+          admin: { readOnly: true },
+        },
+        {
+          name: 'variantTitle',
+          type: 'text',
+          required: true,
+          label: 'ვარიანტის სახელი',
+          admin: { readOnly: true },
+        },
+        { name: 'sku', type: 'text', required: true, label: 'SKU', admin: { readOnly: true } },
+        {
+          name: 'unitPrice',
+          type: 'number',
+          required: true,
+          min: 0,
+          label: 'ერთეულის ფასი (₾)',
+          admin: { readOnly: true },
+        },
+        { name: 'qty', type: 'number', required: true, min: 1, label: 'რაოდენობა', admin: { readOnly: true } },
         {
           name: 'priceOnConfirmation',
           type: 'number',
