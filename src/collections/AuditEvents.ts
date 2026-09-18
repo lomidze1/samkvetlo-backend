@@ -30,7 +30,9 @@ export const AuditEvents: CollectionConfig = {
       name: 'user',
       type: 'relationship',
       relationTo: 'users',
-      required: true,
+      // Not required: the FK is ON DELETE SET NULL, so a required column made
+      // deleting any admin who had ever logged in abort the transaction. The
+      // audit row outlives the account; `user` just becomes empty.
       label: 'მომხმარებელი',
       admin: { readOnly: true },
     },

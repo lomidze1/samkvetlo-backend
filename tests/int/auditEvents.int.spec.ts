@@ -207,4 +207,45 @@ describe('audit-events (ADR 0014 §4 fallback, ADR 0016, T5.14)', () => {
       await payload.delete({ collection: 'users', id: admin.id, overrideAccess: true })
     }
   })
+
+  it('deleting a user who has audit events succeeds, and the audit rows survive with an empty user', async () => {
+    // Every login is audited, so every real admin account has audit rows. The
+    // FK is ON DELETE SET NULL; a required `user` column used to make this
+    // delete abort the whole transaction.
+    const email = 'audit-delete-test@samkvetlo.local'
+    // Leftover from an interrupted earlier run would fail the create below.
+    await payload.delete({ collection: 'users', where: { email: { equals: email } }, overrideAccess: true })
+    const doomed = await payload.create({
+      collection: 'users',
+      data: { email, password: PASSWORD },
+      overrideAccess: true,
+    })
+    const handler = REST_POST(config)
+    const response = await handler(
+      new Request('http://localhost:3001/api/users/login', {
+        method: 'POST',
+        headers: new Headers({ 'content-type': 'application/json' }),
+        body: JSON.stringify({ email, password: PASSWORD }),
+      }),
+      { params: Promise.resolve({ slug: ['users', 'login'] }) },
+    )
+    expect(response.status).toBe(200)
+
+    const { docs } = await payload.find({
+      collection: 'audit-events',
+      where: { user: { equals: doomed.id } },
+      overrideAccess: true,
+      limit: 1,
+    })
+    const auditId = docs[0]?.id
+    expect(auditId).toBeDefined()
+
+    await payload.delete({ collection: 'users', id: doomed.id, overrideAccess: true })
+
+    const survivor = await payload.findByID({ collection: 'audit-events', id: auditId!, overrideAccess: true, depth: 0 })
+    expect(survivor.type).toBe('login.success')
+    expect(survivor.user).toBeFalsy()
+
+    await payload.delete({ collection: 'audit-events', id: auditId!, overrideAccess: true })
+  })
 })

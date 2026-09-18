@@ -714,7 +714,7 @@ export interface DeliveryZone {
 export interface AuditEvent {
   id: number;
   type: string;
-  user: number | User;
+  user?: (number | null) | User;
   country?: string | null;
   at: string;
   updatedAt: string;
