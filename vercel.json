@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
   "regions": ["fra1"],
   "buildCommand": "DATABASE_URL=\"${DATABASE_URL_MIGRATOR:-$DATABASE_URL}\" pnpm payload migrate && pnpm build",
   "crons": [{ "path": "/api/cron/exchange-rates", "schedule": "0 7 * * *" }]
