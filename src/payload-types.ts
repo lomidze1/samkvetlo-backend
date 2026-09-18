@@ -188,6 +188,7 @@ export interface Media {
   id: number;
   alt: string;
   blurDataURL?: string | null;
+  prefix?: string | null;
   updatedAt: string;
   createdAt: string;
   url?: string | null;
@@ -256,6 +257,7 @@ export interface Media {
  */
 export interface PublicFile {
   id: number;
+  prefix?: string | null;
   updatedAt: string;
   createdAt: string;
   url?: string | null;
@@ -274,6 +276,7 @@ export interface PublicFile {
  */
 export interface PrivateFile {
   id: number;
+  prefix?: string | null;
   updatedAt: string;
   createdAt: string;
   url?: string | null;
@@ -941,6 +944,7 @@ export interface UsersSelect<T extends boolean = true> {
 export interface MediaSelect<T extends boolean = true> {
   alt?: T;
   blurDataURL?: T;
+  prefix?: T;
   updatedAt?: T;
   createdAt?: T;
   url?: T;
@@ -1022,6 +1026,7 @@ export interface MediaSelect<T extends boolean = true> {
  * via the `definition` "public-files_select".
  */
 export interface PublicFilesSelect<T extends boolean = true> {
+  prefix?: T;
   updatedAt?: T;
   createdAt?: T;
   url?: T;
@@ -1039,6 +1044,7 @@ export interface PublicFilesSelect<T extends boolean = true> {
  * via the `definition` "private-files_select".
  */
 export interface PrivateFilesSelect<T extends boolean = true> {
+  prefix?: T;
   updatedAt?: T;
   createdAt?: T;
   url?: T;

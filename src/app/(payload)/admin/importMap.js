@@ -26,6 +26,7 @@ import { ApprovePriceButton as ApprovePriceButton_3c4adc98fec3bc2d9389ba37ea95b5
 import { FailedNotificationsWarning as FailedNotificationsWarning_5522d7f0538943b7b5f51f540f7d6088 } from '../../../components/admin/FailedNotificationsWarning'
 import { OrderItemRowLabel as OrderItemRowLabel_2a0c3adbeb47d6225a83ab4e61d1a813 } from '../../../components/admin/OrderItemRowLabel'
 import { PConfirmedBanner as PConfirmedBanner_fcd440934340203fad7f38d8126e1129 } from '../../../components/admin/PConfirmedBanner'
+import { S3ClientUploadHandler as S3ClientUploadHandler_f97aa6c64367fa259c5bc0567239ef24 } from '@payloadcms/storage-s3/client'
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from '@payloadcms/next/rsc'
 
 /** @type import('payload').ImportMap */
@@ -58,5 +59,6 @@ export const importMap = {
   "/components/admin/FailedNotificationsWarning#FailedNotificationsWarning": FailedNotificationsWarning_5522d7f0538943b7b5f51f540f7d6088,
   "/components/admin/OrderItemRowLabel#OrderItemRowLabel": OrderItemRowLabel_2a0c3adbeb47d6225a83ab4e61d1a813,
   "/components/admin/PConfirmedBanner#PConfirmedBanner": PConfirmedBanner_fcd440934340203fad7f38d8126e1129,
+  "@payloadcms/storage-s3/client#S3ClientUploadHandler": S3ClientUploadHandler_f97aa6c64367fa259c5bc0567239ef24,
   "@payloadcms/next/rsc#CollectionCards": CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1
 }

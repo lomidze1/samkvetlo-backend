@@ -47,42 +47,41 @@ const dirname = path.dirname(filename)
 
 // ADR 0013 §1: the S3 adapter only turns on when S3_BUCKET is configured
 // (prod). Locally, files stay on disk and the backend serves them itself.
-const s3Plugins: Plugin[] = []
-if (process.env.S3_BUCKET) {
-  const s3Config = {
-    region: process.env.S3_REGION || 'auto',
-    endpoint: process.env.S3_ENDPOINT,
-    credentials: {
-      accessKeyId: process.env.S3_ACCESS_KEY_ID || '',
-      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || '',
+// alwaysInsertFields keeps the plugin's `prefix` column in the schema either
+// way, so migrations generated locally match the prod (S3-enabled) schema.
+const s3Config = {
+  region: process.env.S3_REGION || 'auto',
+  endpoint: process.env.S3_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.S3_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || '',
+  },
+}
+const s3Plugins: Plugin[] = [
+  s3Storage({
+    enabled: Boolean(process.env.S3_BUCKET),
+    alwaysInsertFields: true,
+    collections: {
+      media: { prefix: 'media', disablePayloadAccessControl: true },
+      'public-files': { prefix: 'files', disablePayloadAccessControl: true },
     },
-  }
-  s3Plugins.push(
-    s3Storage({
-      collections: {
-        media: { prefix: 'media', disablePayloadAccessControl: true },
-        'public-files': { prefix: 'files', disablePayloadAccessControl: true },
-      },
-      bucket: process.env.S3_BUCKET,
-      config: s3Config,
-    }),
-  )
+    bucket: process.env.S3_BUCKET || '',
+    config: s3Config,
+  }),
   // private-files: separate, non-public bucket (ADR 0013 §1) — never gets
   // disablePayloadAccessControl, so every read still goes through Payload's
   // collection access control (isAdmin).
-  if (process.env.S3_PRIVATE_BUCKET) {
-    s3Plugins.push(
-      s3Storage({
-        collections: {
-          'private-files': true,
-        },
-        bucket: process.env.S3_PRIVATE_BUCKET,
-        config: s3Config,
-        clientCacheKey: 's3:private',
-      }),
-    )
-  }
-}
+  s3Storage({
+    enabled: Boolean(process.env.S3_BUCKET && process.env.S3_PRIVATE_BUCKET),
+    alwaysInsertFields: true,
+    collections: {
+      'private-files': true,
+    },
+    bucket: process.env.S3_PRIVATE_BUCKET || '',
+    config: s3Config,
+    clientCacheKey: 's3:private',
+  }),
+]
 
 export default buildConfig({
   // No anonymous usage beacon to a third party not covered by any ADR —
