@@ -574,6 +574,25 @@ async function seedDeliveryZones(payload: Payload): Promise<void> {
   }
 }
 
+/**
+ * M4 (implementation-plan.md "MVP-მდე"): the subset of runSeed that never
+ * creates catalog/demo data — just enough for every public route to render
+ * without a 500 before the owner adds real products from the admin.
+ * `pricing-settings` (MIN 1,500 ₾, MAX $2,500, P 30%, 10 ₾ rounding) needs
+ * no seeding at all — PricingSettings.ts's own `defaultValue`s already are
+ * those owner-confirmed numbers (ADR 0006), and Payload's `findGlobal`
+ * applies them in memory even with zero rows in `pricing_settings`
+ * (verified: an empty table still returns the right values over the API).
+ * Idempotent and additive only, like every `ensure*`/`seedDeliveryZones`
+ * helper it calls — never overwrites a value the owner already edited.
+ */
+export async function runBaseSeed(payload: Payload): Promise<void> {
+  await ensureSiteSettingsPhone(payload)
+  await ensureSiteSettingsOwnerContacts(payload)
+  await ensureStaticPages(payload)
+  await seedDeliveryZones(payload)
+}
+
 export async function runSeed(payload: Payload): Promise<void> {
   const sentinelMode = process.env.SEED_SENTINEL === '1'
 
@@ -796,9 +815,37 @@ export async function teardownSeed(payload: Payload): Promise<void> {
     .catch(() => undefined)
 }
 
+/**
+ * M4: whether `seed:base` may run on prod is an open owner question (owner
+ * rejected the *full* `pnpm seed` running there on 2026-09-18 — `seed:base`
+ * carries no demo data, but running it there is still the owner's call, not
+ * ours). Refuse by default; `--allow-prod` is the explicit override this
+ * task's acceptance criteria asks for, never a default. A pure predicate
+ * (no `process.exit`) so it's unit-testable; `main` below is the only
+ * caller that acts on it.
+ */
+export function refusesToRunOnProd(args: string[], nodeEnv: string | undefined): boolean {
+  const isBase = args.includes('--base')
+  const allowProd = args.includes('--allow-prod')
+  return isBase && nodeEnv === 'production' && !allowProd
+}
+
 async function main(): Promise<void> {
+  const args = process.argv.slice(2)
+  if (refusesToRunOnProd(args, process.env.NODE_ENV)) {
+    console.error(
+      'seed:base refused: NODE_ENV=production. Pass --allow-prod to run anyway ' +
+        '(see M4, _doc/plan/implementation-plan.md "MVP-მდე" — running seed:base on prod is still an open owner decision).',
+    )
+    process.exit(1)
+  }
+
   const payload = await getPayload({ config })
-  await runSeed(payload)
+  if (args.includes('--base')) {
+    await runBaseSeed(payload)
+  } else {
+    await runSeed(payload)
+  }
   console.log('seed: done')
   process.exit(0)
 }

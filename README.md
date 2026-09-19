@@ -24,7 +24,8 @@ Payload CMS ადმინი + `/api/public/*` DTO API სამკვეთ�
 | `pnpm lint` / `pnpm typecheck` / `pnpm check:ka` | lint, TS, hardcoded ქართული ტექსტის შემოწმება |
 | `pnpm test:int` / `pnpm test:e2e` / `pnpm test` | Vitest ინტეგრაცია / Playwright e2e / ორივე |
 | `pnpm db:up` / `pnpm db:down` | Postgres 18 Docker-ში |
-| `pnpm seed` | სატესტო კატალოგის თესვა |
+| `pnpm seed` | სატესტო კატალოგის თესვა (პროდუქტებთან ერთად — მხოლოდ dev/test) |
+| `pnpm seed:base` | ბაზისური მონაცემები **პროდუქტების გარეშე** (site-settings, delivery zones, სტატიკური გვერდები) — M4. `NODE_ENV=production`-ზე უარს ამბობს, გარდა `--allow-prod`-ისა (prod-ზე გაშვება ჯერ ღია კითხვაა მფლობელისთვის) |
 | `pnpm rates:sync` | ვალუტის კურსის სინქრონიზაცია (NBG) |
 | `pnpm admin:totp --email <e> [--create]` | ადმინის 2FA ჩართვა/როტაცია (ADR 0018) — [`docs/runbooks/admin-totp.md`](docs/runbooks/admin-totp.md) |
 

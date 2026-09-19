@@ -19,6 +19,7 @@
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
     "seed": "tsx scripts/seed.ts",
+    "seed:base": "tsx scripts/seed.ts --base",
     "rates:sync": "tsx scripts/rates-sync.ts",
     "admin:totp": "tsx scripts/admin-totp.ts",
     "payload": "cross-env NODE_OPTIONS=--no-deprecation payload",
