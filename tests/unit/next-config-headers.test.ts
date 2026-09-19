@@ -20,4 +20,22 @@ describe('next.config.ts headers() (T5.x SEO contract, CI coverage)', () => {
 
     expect(robotsHeader).toEqual({ key: 'X-Robots-Tag', value: 'noindex, nofollow' })
   })
+
+  // T5.8 (ADR 0014 §3): the same enforced headers on every path, unit-tested
+  // for the same CI-coverage reason as the robots header above.
+  it('sends every T5.8 security header on every path', async () => {
+    const { default: config } = await import('../../next.config')
+    const headerGroups = await config.headers!()
+    const headers = headerGroups.flatMap((group) => group.headers ?? [])
+    const byKey = (key: string) => headers.find((header) => header.key === key)
+
+    expect(byKey('Strict-Transport-Security')?.value).toContain('max-age=31536000')
+    expect(byKey('X-Frame-Options')).toEqual({ key: 'X-Frame-Options', value: 'DENY' })
+    expect(byKey('X-Content-Type-Options')).toEqual({ key: 'X-Content-Type-Options', value: 'nosniff' })
+    expect(byKey('Referrer-Policy')).toEqual({
+      key: 'Referrer-Policy',
+      value: 'strict-origin-when-cross-origin',
+    })
+    expect(byKey('Permissions-Policy')?.value).toContain('camera=()')
+  })
 })

@@ -7,18 +7,33 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(__filename)
 
-const nextConfig: NextConfig = {
-  async redirects() {
-    return [{ source: '/', destination: '/admin', permanent: false }]
+// T5.8 (ADR 0014 §3): enforced on every response, same values as
+// samkvetlo/next.config.ts's SECURITY_HEADERS (no CSP here — this is an
+// internal admin tool, not a page rendering third-party scripts/embeds).
+const SECURITY_HEADERS = [
+  { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
+  { key: 'X-Frame-Options', value: 'DENY' },
+  { key: 'X-Content-Type-Options', value: 'nosniff' },
+  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+  {
+    key: 'Permissions-Policy',
+    value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
   },
   // T5.x SEO contract: nothing on this backend (admin, built-in REST,
   // /api/public/*) should ever be indexed — the storefront (samkvetlo) is
   // the only origin search engines should see.
+  { key: 'X-Robots-Tag', value: 'noindex, nofollow' },
+]
+
+const nextConfig: NextConfig = {
+  async redirects() {
+    return [{ source: '/', destination: '/admin', permanent: false }]
+  },
   async headers() {
     return [
       {
         source: '/:path*',
-        headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }],
+        headers: SECURITY_HEADERS,
       },
     ]
   },
