@@ -44,4 +44,6 @@ export const SENTINEL = {
   customRequestEmail: 'zzsent-cr-7f3a@samkvetlo.invalid',
   customRequestDescription: 'ZZSENT-CR-DESC-7f3a',
   customRequestInternalNotes: 'ZZSENT-CR-NOTES-7f3a',
+  /** short-links.note (ADR 0017, 🔒 admin-only). */
+  shortLinkNote: 'ZZSENT-SHORTLINK-NOTE-7f3a',
 } as const

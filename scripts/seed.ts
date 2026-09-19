@@ -679,6 +679,33 @@ export async function runSeed(payload: Payload): Promise<void> {
   if (bellDocs[0]) await seedPortfolio(payload, bellDocs[0].id)
 
   await seedDeliveryZones(payload)
+
+  // T5.7: SEED_SENTINEL=1 also seeds one short link (ADR 0017) with a
+  // sentinel `note` (🔒 admin-only) — the frontend secrecy e2e run
+  // (samkvetlo's tests/e2e/secrecy.e2e.spec.ts, standing up its own
+  // separate SEED_SENTINEL=1 stack per README.md) has no admin session to
+  // create one itself, and the regular (non-sentinel) seed has no reason to
+  // carry a throwaway short link at all.
+  if (sentinelMode) {
+    await upsertShortLink(payload)
+  }
+}
+
+const SENTINEL_SHORT_LINK_SLUG = 'secrecy-test'
+
+async function upsertShortLink(payload: Payload): Promise<void> {
+  const { docs } = await payload.find({
+    collection: 'short-links',
+    where: { slug: { equals: SENTINEL_SHORT_LINK_SLUG } },
+    limit: 1,
+    overrideAccess: true,
+  })
+  const data = { slug: SENTINEL_SHORT_LINK_SLUG, target: '/zarebi', active: true, note: SENTINEL.shortLinkNote }
+  if (docs[0]) {
+    await payload.update({ collection: 'short-links', id: docs[0].id, data, overrideAccess: true })
+  } else {
+    await payload.create({ collection: 'short-links', data, overrideAccess: true })
+  }
 }
 
 /**
@@ -763,6 +790,10 @@ export async function teardownSeed(payload: Payload): Promise<void> {
       .delete({ collection: 'pages', where: { slug: { equals: page.slug } }, overrideAccess: true })
       .catch(() => undefined)
   }
+
+  await payload
+    .delete({ collection: 'short-links', where: { slug: { equals: SENTINEL_SHORT_LINK_SLUG } }, overrideAccess: true })
+    .catch(() => undefined)
 }
 
 async function main(): Promise<void> {

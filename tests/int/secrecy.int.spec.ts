@@ -24,6 +24,8 @@ import { getPublicDeliveryZones } from '@/server/public/deliveryZones'
 import { getPublicShareByToken } from '@/server/public/share'
 import { generateOwnerSecret, generateToken, hashOwnerSecret, hashToken } from '@/server/share/token'
 import { getPublicSitemap } from '@/server/public/sitemap'
+import { getPublicShortLinks } from '@/server/public/shortLinks'
+import { buildCustomerOrderText, buildOwnerOrderEmail, buildOwnerOrderSms } from '@/server/notify/templates/orderCreated'
 
 import { runSeed, teardownSeed } from '../../scripts/seed'
 import { SENTINEL } from '../fixtures/sentinel'
@@ -37,9 +39,19 @@ let sentinelOrderId: number | string
 let sentinelCustomRequestId: number | string
 let sentinelShareLinkId: number | string
 let sentinelShareLinkToken: string
+let sentinelShortLinkId: number | string
+let sentinelShortLinkSlug: string
 let pageSlugForSweep: string | null = null
 const cleanupIds: {
-  collection: 'categories' | 'custom-requests' | 'orders' | 'pages' | 'products' | 'public-files' | 'share-links'
+  collection:
+    | 'categories'
+    | 'custom-requests'
+    | 'orders'
+    | 'pages'
+    | 'products'
+    | 'public-files'
+    | 'share-links'
+    | 'short-links'
   id: number | string
 }[] = []
 
@@ -217,6 +229,27 @@ async function createSentinelShareLink(variantId: number): Promise<{ id: number 
   return { id: doc.id, token }
 }
 
+/**
+ * T5.7: /go short links (ADR 0017) are a newer surface than this file
+ * originally covered — `note` is the one 🔒 admin-only field on an
+ * otherwise-public (when active) collection, same shape as
+ * site-settings.notifyCustomer below.
+ */
+async function createSentinelShortLink(): Promise<{ id: number | string; slug: string }> {
+  // The slug/target are public by design (that's the point of the feature)
+  // — only `note` (below) is the field under test, so the slug itself must
+  // NOT match SENTINEL_PATTERN (or it would trip the blanket "no sentinel
+  // anywhere" checks for a reason that has nothing to do with a leak) and
+  // must fit SHORT_LINK_SLUG_RE's 32-char max (ADR 0017 §1).
+  const slug = `sctest-${Date.now().toString(36)}`
+  const doc = await payload.create({
+    collection: 'short-links',
+    data: { slug, target: '/zarebi', active: true, note: SENTINEL.shortLinkNote },
+    overrideAccess: true,
+  })
+  return { id: doc.id, slug: doc.slug! }
+}
+
 /** Reuses an existing page if one is already seeded (e.g. by pages.int.spec.ts); creates one otherwise. */
 async function ensurePageForSweep(): Promise<string | null> {
   const { docs } = await payload.find({ collection: 'pages', limit: 1, overrideAccess: true })
@@ -315,6 +348,9 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
     const shareLink = await createSentinelShareLink(sentinelVariantId)
     sentinelShareLinkId = shareLink.id
     sentinelShareLinkToken = shareLink.token
+    const shortLink = await createSentinelShortLink()
+    sentinelShortLinkId = shortLink.id
+    sentinelShortLinkSlug = shortLink.slug
     pageSlugForSweep = await ensurePageForSweep()
   })
 
@@ -327,6 +363,9 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
       .catch(() => undefined)
     await payload
       .delete({ collection: 'share-links', id: sentinelShareLinkId, overrideAccess: true })
+      .catch(() => undefined)
+    await payload
+      .delete({ collection: 'short-links', id: sentinelShortLinkId, overrideAccess: true })
       .catch(() => undefined)
     for (const { collection, id } of cleanupIds) {
       await payload.delete({ collection, id, overrideAccess: true }).catch(() => undefined)
@@ -397,6 +436,13 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
     assertNoSentinel('sitemap', sitemap)
     expect(Object.keys(sitemap).sort()).toEqual(['categories', 'pages', 'portfolio', 'products'])
 
+    // T5.7: /go short links (ADR 0017) — the `note` field is 🔒 admin-only.
+    const shortLinks = await getPublicShortLinks(payload)
+    assertNoSentinel('short-links', shortLinks)
+    const sentinelShortLink = shortLinks.find((link) => link.slug === sentinelShortLinkSlug)
+    expect(sentinelShortLink).toBeTruthy()
+    expect(Object.keys(sentinelShortLink!).sort()).toEqual(['href', 'slug'])
+
     // D19 exception: documents[*].issuer legitimately carries the supplier
     // name — stripped before the blanket check, then checked positively (it
     // must be there, and *only* there).
@@ -442,6 +488,7 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
       '/public/portfolio',
       '/public/delivery-zones',
       '/public/sitemap',
+      '/public/short-links',
     ]) {
       const response = await callEndpoint(path)
       expect(response.status, path).toBe(200)
@@ -530,5 +577,50 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
     assertNoSentinel('/api/globals/site-settings', settingsBody)
     expect(settingsBody.notifyCustomer).toBeUndefined()
     expect(settingsBody.shareLinkTtlDays).toBeUndefined()
+
+    // T5.7: /go short links (ADR 0017) — active links are readable via the
+    // built-in REST too (publicReadActive), but `note` is field-access
+    // restricted, same shape as notifyCustomer/shareLinkTtlDays above.
+    const shortLinksResponse = await callBuiltInRestAnonymously(['short-links'])
+    expect(shortLinksResponse.status).toBe(200)
+    const shortLinksBody = (await shortLinksResponse.json()) as { docs: Record<string, unknown>[] }
+    assertNoSentinel('/api/short-links', shortLinksBody)
+    const sentinelDoc = shortLinksBody.docs.find((doc) => doc.slug === sentinelShortLinkSlug)
+    expect(sentinelDoc).toBeTruthy()
+    expect(sentinelDoc!.note).toBeUndefined()
+  })
+
+  // T5.7: notification adapters (ADR 0007/0019) — the owner/customer
+  // email+SMS templates only ever read fields already on the `Order`
+  // document (verified: src/server/notify/templates/orderCreated.ts never
+  // references Suppliers/Costings), so there is no route for supplier/cost
+  // data to reach a notification. This is the explicit regression guard for
+  // that: legitimate customer PII (D25) is expected and excluded from the
+  // check — only the *supplier-side* sentinels (never legitimately part of
+  // an order) must be absent.
+  it('order notification content (email/SMS templates) never carries supplier-side data', async () => {
+    const order = await payload.findByID({ collection: 'orders', id: sentinelOrderId, overrideAccess: true })
+    const SUPPLIER_SENTINEL_PATTERN = new RegExp(
+      [SENTINEL.supplierName, SENTINEL.supplierUrl, SENTINEL.supplierSku, SENTINEL.note, String(SENTINEL.costRub)]
+        .map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .join('|'),
+    )
+
+    const ownerEmail = buildOwnerOrderEmail(order, 'http://localhost:3001/admin/collections/orders/1')
+    expect(ownerEmail.subject).not.toMatch(SUPPLIER_SENTINEL_PATTERN)
+    expect(ownerEmail.text).not.toMatch(SUPPLIER_SENTINEL_PATTERN)
+
+    const ownerSms = buildOwnerOrderSms(order)
+    expect(ownerSms).not.toMatch(SUPPLIER_SENTINEL_PATTERN)
+
+    const customerText = buildCustomerOrderText(order)
+    expect(customerText).not.toMatch(SUPPLIER_SENTINEL_PATTERN)
+
+    // Positive control: the owner SMS really does carry the customer's name
+    // (order.name, by design — ADR 0007 §4) — proving this reads real order
+    // data, not an empty stub that would make the check above pass for the
+    // wrong reason. The owner email doesn't include the customer's name at
+    // all (only item lines, delivery, total, admin link — see the template).
+    expect(ownerSms).toContain(SENTINEL.orderCustomerName)
   })
 })
