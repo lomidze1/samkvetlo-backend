@@ -83,6 +83,7 @@ export interface Config {
     'delivery-zones': DeliveryZone;
     'custom-requests': CustomRequest;
     'share-links': ShareLink;
+    'audit-events': AuditEvent;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -110,6 +111,7 @@ export interface Config {
     'delivery-zones': DeliveryZonesSelect<false> | DeliveryZonesSelect<true>;
     'custom-requests': CustomRequestsSelect<false> | CustomRequestsSelect<true>;
     'share-links': ShareLinksSelect<false> | ShareLinksSelect<true>;
+    'audit-events': AuditEventsSelect<false> | AuditEventsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -301,6 +303,15 @@ export interface Category {
    */
   slug?: string | null;
   parent?: (number | null) | Category;
+  /**
+   * ივსება ავტომატურად slug-ის შეცვლისას
+   */
+  oldSlugs?:
+    | {
+        slug: string;
+        id?: string | null;
+      }[]
+    | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -388,6 +399,15 @@ export interface Product {
    * ავტომატურად ითვლება ვარიანტებიდან
    */
   isPurchasable?: boolean | null;
+  /**
+   * ივსება ავტომატურად slug-ის შეცვლისას
+   */
+  oldSlugs?:
+    | {
+        slug: string;
+        id?: string | null;
+      }[]
+    | null;
   updatedAt: string;
   createdAt: string;
   _status?: ('draft' | 'published') | null;
@@ -787,6 +807,19 @@ export interface ShareLink {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "audit-events".
+ */
+export interface AuditEvent {
+  id: number;
+  type: string;
+  user?: (number | null) | User;
+  country?: string | null;
+  at: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -872,6 +905,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'share-links';
         value: number | ShareLink;
+      } | null)
+    | ({
+        relationTo: 'audit-events';
+        value: number | AuditEvent;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -1065,6 +1102,12 @@ export interface CategoriesSelect<T extends boolean = true> {
   name?: T;
   slug?: T;
   parent?: T;
+  oldSlugs?:
+    | T
+    | {
+        slug?: T;
+        id?: T;
+      };
   updatedAt?: T;
   createdAt?: T;
 }
@@ -1110,6 +1153,12 @@ export interface ProductsSelect<T extends boolean = true> {
   variants?: T;
   minPrice?: T;
   isPurchasable?: T;
+  oldSlugs?:
+    | T
+    | {
+        slug?: T;
+        id?: T;
+      };
   updatedAt?: T;
   createdAt?: T;
   _status?: T;
@@ -1392,6 +1441,18 @@ export interface ShareLinksSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "audit-events_select".
+ */
+export interface AuditEventsSelect<T extends boolean = true> {
+  type?: T;
+  user?: T;
+  country?: T;
+  at?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv_select".
  */
 export interface PayloadKvSelect<T extends boolean = true> {
@@ -1490,6 +1551,12 @@ export interface SiteSetting {
     | null;
   notifyCustomer?: boolean | null;
   shareLinkTtlDays?: number | null;
+  store?: {
+    publishAddress?: boolean | null;
+    streetAddress?: string | null;
+    addressLocality?: string | null;
+    postalCode?: string | null;
+  };
   updatedAt?: string | null;
   createdAt?: string | null;
 }
@@ -1549,6 +1616,14 @@ export interface SiteSettingsSelect<T extends boolean = true> {
       };
   notifyCustomer?: T;
   shareLinkTtlDays?: T;
+  store?:
+    | T
+    | {
+        publishAddress?: T;
+        streetAddress?: T;
+        addressLocality?: T;
+        postalCode?: T;
+      };
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;
