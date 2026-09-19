@@ -175,6 +175,15 @@ export default buildConfig({
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
   db: postgresAdapter({
+    // ADR 0018 addendum A (T5.17a): schema-push (Payload's dev-mode default,
+    // `push: true`) silently applies config changes straight to the DB —
+    // exactly what let `users_sessions` (and other schema) drift out of
+    // sync with the tracked migrations in the first place (see
+    // 20260919_080426_totp_admin_2fa.ts's comment). CI's `test:int` job
+    // sets PAYLOAD_DB_PUSH=false (after running `payload migrate`) so a
+    // migration gap fails there instead of being papered over by push;
+    // local dev keeps push on (the default) for its usual speed.
+    push: process.env.PAYLOAD_DB_PUSH !== 'false',
     pool: {
       connectionString: process.env.DATABASE_URL || '',
     },

@@ -5,14 +5,16 @@ import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
 // Code review finding, then reverted: a first version of this fix also ran
 // `UPDATE "users" SET "sessions" = '[]'::jsonb` here, meaning to invalidate
 // any session/cookie issued before 2FA was required. That statement
-// crashes migrate — `users` has had no `sessions` column since the very
-// first migration (20260915_133239), even though Payload's `useSessions`
-// defaults to true and payload-types.ts lists the field: the local
-// dev/test schema (Payload's schema-push, not migrate) silently has the
-// column, but every migrated database (prod included) never got it, so
-// nothing is actually being tracked/revoked there today. That gap is
-// real but pre-existing and unrelated to this migration — flagged
-// separately for chief-architect rather than papered over here.
+// crashes migrate — `sessions` is Payload's own array field, stored as the
+// separate `users_sessions` child table (id / _parent_id / created_at /
+// expires_at), not a `sessions` column on `users` itself; there never was
+// one to update. `users_sessions` has existed since the very first
+// migration (20260915_133239) and — corrected from an earlier version of
+// this comment, which wrongly concluded sessions weren't actually being
+// tracked/revocable at all — real session rows are written there on every
+// login/refresh (`useSessions: true`, Payload's own default). What was
+// missing was ever *deleting* a row from it: ADR 0018 addendum A
+// (T5.17a, revoke_sessions_2fa migration) is that fix.
 export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
    ALTER TABLE "users" ADD COLUMN "totp_secret" varchar;

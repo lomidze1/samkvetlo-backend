@@ -5,6 +5,8 @@ import { isAdminField } from '../access/isAdminField'
 import { auditLogin } from './hooks/loginAudit'
 import { enforcePasswordMinLength } from './hooks/passwordPolicy'
 import { requireTotp } from './hooks/requireTotp'
+import { flagPasswordChange, revokeSessionsOnPasswordChange } from './hooks/revokeOnPasswordChange'
+import { enforceSessionMaxAge } from './hooks/sessionMaxAge'
 
 export const Users: CollectionConfig = {
   slug: 'users',
@@ -23,13 +25,18 @@ export const Users: CollectionConfig = {
     maxLoginAttempts: 5,
     lockTime: 15 * 60 * 1000,
     tokenExpiration: 7200,
+    // ADR 0018 addendum A (T5.17a): explicit, even though it's Payload's
+    // own default — sessions are what revokeUserSessions/enforceSessionMaxAge
+    // below act on (the `users_sessions` child table), so this being true
+    // is load-bearing, not incidental.
+    useSessions: true,
     cookies: {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'Lax',
     },
   },
   hooks: {
-    beforeValidate: [enforcePasswordMinLength],
+    beforeValidate: [enforcePasswordMinLength, flagPasswordChange],
     // ADR 0018 (T5.17): 2FA gate — closes the T5.9 spike's hole (a user
     // with no TOTP secret used to reach admin-only data with just the
     // password). Runs before jwtSign, in the same request/transaction as
@@ -40,6 +47,13 @@ export const Users: CollectionConfig = {
     // password used from inside Georgia is otherwise silent). Emails the
     // owners only on break-glass (ADR 0016).
     afterLogin: [auditLogin],
+    // ADR 0018 addendum A (T5.17a): a password change invalidates every
+    // other session for that account (its own current one excepted, on a
+    // self change) — flagPasswordChange (beforeValidate above) marks the
+    // request via req.context.
+    afterChange: [revokeSessionsOnPasswordChange],
+    // ADR 0018 addendum A: 12 h absolute session cap, checked on refresh.
+    beforeOperation: [enforceSessionMaxAge],
   },
   fields: [
     // Email added by default

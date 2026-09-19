@@ -73,7 +73,14 @@ jobs:
       # earlier one had) — the next migrate:create would then try to
       # re-create things that already exist in prod.
       - run: pnpm check:migrations
+      # ADR 0018 addendum A (T5.17a): off here (unlike local dev, where
+      # push's speed is worth it) so a migration gap — schema push papering
+      # over a config change the committed migrations never actually
+      # capture — fails this job instead of only surfacing on a real
+      # migrate-driven deploy.
       - run: pnpm test:int
+        env:
+          PAYLOAD_DB_PUSH: 'false'
 
       - run: pnpm audit --prod --audit-level high
 

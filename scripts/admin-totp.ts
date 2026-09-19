@@ -9,6 +9,7 @@ import { getPayload } from 'payload'
 import config from '../src/payload.config'
 import { PASSWORD_MIN_LENGTH } from '../src/collections/hooks/passwordPolicy'
 import { buildOtpauthUri, generateTotpSecret } from '../src/server/security/totp'
+import { revokeUserSessions } from '../src/server/security/sessions'
 
 interface ParsedArgs {
   email?: string
@@ -96,15 +97,6 @@ async function main(): Promise<void> {
   await payload.update({
     collection: 'users',
     id: userId,
-    // Code review finding: rotating the secret (lost phone, routine
-    // rotation) should also invalidate any session/cookie issued before
-    // the rotation. It can't here — `users` has no `sessions` column in
-    // any migrated database (see the migration's comment for the full
-    // story), so there's nothing to clear; a still-valid, unexpired
-    // cookie/JWT from before the rotation keeps working for up to
-    // tokenExpiration (2h) regardless. totpFailCount/totpFailWindowStart
-    // are still reset, so a rotation isn't immediately throttled by
-    // failures against the *old* secret.
     data: {
       totpSecret: secret,
       totpLastStep: null,
@@ -115,10 +107,18 @@ async function main(): Promise<void> {
     overrideAccess: true,
   })
 
+  // ADR 0018 addendum A (T5.17a): rotating the secret (lost phone, routine
+  // rotation) also invalidates every session/cookie issued before the
+  // rotation — code review finding from T5.17, unresolved until
+  // revokeUserSessions existed to act on (the previously-assumed-missing)
+  // `users_sessions` rows.
+  const revokedCount = await revokeUserSessions({ payload, userId })
+
   const uri = buildOtpauthUri(secret, email)
   console.log(`\nTOTP enrolled for ${email}. Add it to your authenticator app now — this is printed only once:\n`)
   console.log(`  URI:    ${uri}`)
   console.log(`  Secret: ${secret}\n`)
+  console.log(`Revoked ${revokedCount} existing session(s) for ${email}.`)
   process.exit(0)
 }
 

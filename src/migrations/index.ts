@@ -12,6 +12,7 @@ import * as migration_20260919_084004_retention_years from './20260919_084004_re
 import * as migration_20260919_091816_totp_fail_throttle from './20260919_091816_totp_fail_throttle';
 import * as migration_20260919_093101_short_links from './20260919_093101_short_links';
 import * as migration_20260919_100107_phone_secondary from './20260919_100107_phone_secondary';
+import * as migration_20260919_105935_revoke_sessions_2fa from './20260919_105935_revoke_sessions_2fa';
 
 export const migrations = [
   {
@@ -82,6 +83,11 @@ export const migrations = [
   {
     up: migration_20260919_100107_phone_secondary.up,
     down: migration_20260919_100107_phone_secondary.down,
-    name: '20260919_100107_phone_secondary'
+    name: '20260919_100107_phone_secondary',
+  },
+  {
+    up: migration_20260919_105935_revoke_sessions_2fa.up,
+    down: migration_20260919_105935_revoke_sessions_2fa.down,
+    name: '20260919_105935_revoke_sessions_2fa'
   },
 ];
