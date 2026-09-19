@@ -668,7 +668,7 @@ export interface Portfolio {
  */
 export interface Page {
   id: number;
-  slug: 'how-we-work' | 'about' | 'delivery' | 'contact' | 'privacy';
+  slug: 'how-we-work' | 'about' | 'delivery' | 'contact' | 'privacy' | 'terms';
   title: string;
   content: {
     root: {

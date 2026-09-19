@@ -5,13 +5,14 @@ import { publicRead } from '../access/publicRead'
 import { revalidateAfterChange, revalidateAfterDelete } from './hooks/revalidate'
 
 // Architecture §9: the fixed set of static content pages (rich text).
-// A general CMS-style page tree isn't needed for these five.
+// A general CMS-style page tree isn't needed for these six.
 const PAGE_SLUGS = [
   { label: 'როგორ ვმუშაობთ', value: 'how-we-work' },
   { label: 'ჩვენს შესახებ', value: 'about' },
   { label: 'მიწოდება', value: 'delivery' },
   { label: 'კონტაქტი', value: 'contact' },
   { label: 'კონფიდენციალურობა', value: 'privacy' },
+  { label: 'შეკვეთის პირობები', value: 'terms' },
 ] as const
 
 export const Pages: CollectionConfig = {

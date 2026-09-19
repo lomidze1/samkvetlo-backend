@@ -157,7 +157,7 @@ async function ensureSiteSettingsOwnerContacts(payload: Payload): Promise<void> 
 }
 
 interface StaticPageSeed {
-  slug: 'how-we-work' | 'about' | 'delivery' | 'contact' | 'privacy'
+  slug: 'how-we-work' | 'about' | 'delivery' | 'contact' | 'privacy' | 'terms'
   title: string
   text: string | string[]
 }
@@ -174,6 +174,20 @@ const PRIVACY_PAGE_PARAGRAPHS: string[] = [
   '6. საკონტაქტო ინფორმაცია მოცემულია საიტის სათაურში/footer-ში.',
 ]
 
+// M7 (implementation-plan.md "MVP-მდე"): placeholder — ⚖️ owner-checklist.md
+// tracks that this still needs a lawyer's pass, not a new field on the page
+// itself. Short, one paragraph per point, sourced from decisions already
+// made elsewhere (ADR 0003 §4/§8, ADR 0006, ADR 0015) — no new policy
+// invented here (a refund %, a deadline, a liability cap — none of that is
+// decided anywhere yet, so none of it appears below).
+const TERMS_PAGE_PARAGRAPHS: string[] = [
+  '1. გადახდა: შეკვეთაზე გადახდა 100% წინასწარია — მხოლოდ მას შემდეგ, რაც მფლობელი დაგირეკავთ და ფასს დაგიდასტურებთ. დარეკვამდე შეკვეთა საბოლოო არ არის.',
+  '2. ფასი: საიტზე ნაჩვენები ფასი წინასწარია. საბოლოო ფასს ადასტურებს მფლობელი პირადად, დარეკვისას, კონკრეტული ნივთისა და დაფარვისთვის.',
+  '3. გაუქმება და დაბრუნება: ნივთი მზადდება თქვენი კონკრეტული შეკვეთით. გაუქმება შესაძლებელია დარეკვით, რაც შეიძლება ადრე — თუ დამზადება უკვე დაწყებულია, პირობებს განვიხილავთ ინდივიდუალურად, დარეკვისას.',
+  '4. მიწოდება: ზონის მიხედვით — თბილისი და 150 კმ-მდე უფასოა, 150–250 კმ +150 ₾, 250 კმ-ზე მეტი +250 ₾, ერთხელ მთელ შეკვეთაზე.',
+  '5. დაზიანება მიწოდებისას: ნივთს გულდასმით ვინახავთ და ვაგზავნით. თუ მიწოდებისას დაზიანებას შეამჩნევთ, დაუყოვნებლივ დაგვირეკეთ.',
+]
+
 // T2.7 needs `pages` content to render at all; without this every static
 // route 404s in a fresh dev DB. Real copy (and the lawyer-reviewed privacy
 // text, T5.12) is the owner's/designer's job — this is just enough that the
@@ -184,6 +198,7 @@ const STATIC_PAGES: StaticPageSeed[] = [
   { slug: 'delivery', title: 'მიწოდება', text: 'თბილისში მიწოდება უფასოა. სხვა ქალაქებში — ზონის მიხედვით. დეტალები ცხრილშია.' },
   { slug: 'contact', title: 'კონტაქტი', text: 'დაგვირეკეთ ან მოგვწერეთ — სრული საკონტაქტო ინფორმაცია მალე დაემატება.' },
   { slug: 'privacy', title: 'კონფიდენციალურობა', text: PRIVACY_PAGE_PARAGRAPHS },
+  { slug: 'terms', title: 'შეკვეთის პირობები', text: TERMS_PAGE_PARAGRAPHS },
 ]
 
 function richTextFrom(text: string | string[]) {

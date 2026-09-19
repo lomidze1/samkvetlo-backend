@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import { RichBlockSchema } from './richText'
 
-export const PAGE_SLUGS = ['how-we-work', 'about', 'delivery', 'contact', 'privacy'] as const
+export const PAGE_SLUGS = ['how-we-work', 'about', 'delivery', 'contact', 'privacy', 'terms'] as const
 
 export const PublicPageSchema = z.strictObject({
   slug: z.enum(PAGE_SLUGS),
