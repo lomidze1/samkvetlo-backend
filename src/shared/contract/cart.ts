@@ -3,12 +3,13 @@ import { z } from 'zod'
 
 import { PublicImageSchema } from './image'
 import { AVAILABILITY_VALUES } from './product'
+// M14: re-exported from the zod-free constants.ts so this module's own
+// public API is unchanged. ADR 0014 §5: cart <= 30 lines, qty 1-20.
+// Exported so the frontend's cart store (localStorage, T3.1) can clamp to
+// the same limits instead of duplicating the numbers (review finding MAJOR 2).
+import { CART_LINE_MAX_QTY, CART_MAX_LINES } from './constants'
 
-// ADR 0014 §5: cart <= 30 lines, qty 1-20. Exported so the frontend's cart
-// store (localStorage, T3.1) can clamp to the same limits instead of
-// duplicating the numbers (review finding MAJOR 2).
-export const CART_LINE_MAX_QTY = 20
-export const CART_MAX_LINES = 30
+export { CART_LINE_MAX_QTY, CART_MAX_LINES }
 
 export const CartLineInputSchema = z.strictObject({
   variantId: z.number().int().positive(),

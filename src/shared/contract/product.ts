@@ -2,11 +2,14 @@
 import { z } from 'zod'
 
 import { PublicCategoryRefSchema } from './category'
+// M14: re-exported from the zod-free constants.ts so this module's own
+// public API is unchanged (the frontend's cart store/category toolbar now
+// import these two straight from constants.ts instead).
+import { AVAILABILITY_VALUES, COATING_VALUES } from './constants'
 import { PublicImageSchema } from './image'
 import { RichBlockSchema } from './richText'
 
-export const COATING_VALUES = ['gilding', 'silvering', 'gold-leaf', 'enamel', 'none'] as const
-export const AVAILABILITY_VALUES = ['ready', 'made-to-order'] as const
+export { AVAILABILITY_VALUES, COATING_VALUES }
 export const TIER_VALUES = ['flagship', 'standard'] as const
 
 export const PublicVariantSchema = z.strictObject({

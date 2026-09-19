@@ -1,16 +1,13 @@
 // SOURCE OF TRUTH — copied to samkvetlo by pnpm shared:sync (ADR 0011 §3, ADR 0012 §3, ADR 0014 §5)
 import { z } from 'zod'
 
+// M14: re-exported from the zod-free constants.ts so this module's own
+// public API is unchanged. ADR 0011 §3: the 5 categories the owner asked
+// for, plus "other".
+import { CUSTOM_REQUEST_CATEGORY_VALUES } from './constants'
 import { PhoneSchema } from './phone'
 
-// ADR 0011 §3: the 5 categories the owner asked for, plus "other".
-export const CUSTOM_REQUEST_CATEGORY_VALUES = [
-  'iconostasis',
-  'vestments',
-  'vessels',
-  'icon',
-  'other',
-] as const
+export { CUSTOM_REQUEST_CATEGORY_VALUES }
 export type CustomRequestCategory = (typeof CUSTOM_REQUEST_CATEGORY_VALUES)[number]
 
 // Same sanitize/limits approach as order.ts (chief-architect, T3.2): every
