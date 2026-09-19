@@ -28,6 +28,21 @@ Payload CMS ადმინი + `/api/public/*` DTO API სამკვეთ�
 | `pnpm rates:sync` | ვალუტის კურსის სინქრონიზაცია (NBG) |
 | `pnpm admin:totp --email <e> [--create]` | ადმინის 2FA ჩართვა/როტაცია (ADR 0018) — [`docs/runbooks/admin-totp.md`](docs/runbooks/admin-totp.md) |
 
+## სუფთა ბაზა, მხოლოდ migration-ებით (M3)
+
+DB, რომელიც build push-ის (`pnpm dev`-ის default ქცევის) გარეშე, მხოლოდ `src/migrations/`-იდან აიგება — ამოწმებს, რომ migration-ების ჯაჭვი config-ის სქემას ემთხვევა:
+
+```bash
+createdb samkvetlo_fresh && createdb samkvetlo_fresh_test
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5433/samkvetlo_fresh PAYLOAD_DB_PUSH=false pnpm payload migrate
+DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5433/samkvetlo_fresh_test PAYLOAD_DB_PUSH=false pnpm payload migrate
+pnpm check:migrations  # config-ის სქემა == migration-ების სქემა (ცალკე DB არ სჭირდება)
+DATABASE_URL=.../samkvetlo_fresh pnpm seed   # ბაზისური/სატესტო მონაცემები
+DATABASE_URL_TEST=.../samkvetlo_fresh_test PAYLOAD_DB_PUSH=false pnpm test:int   # push drift-ს აღარ ფარავს
+DATABASE_URL=.../samkvetlo_fresh PAYLOAD_DB_PUSH=false pnpm exec next dev -p 3021 &   # e2e-სთვის
+pnpm test:e2e   # ამ backend-ზე; frontend-იდან იგივეს E2E_BACKEND_URL-ით
+```
+
 ## შეტყობინებები prod-ში (T5.18, ADR 0019, B3)
 
 `.env`-ში `EMAIL_ADAPTER=console`/`SMS_ADAPTER=console` (dev/staging) რჩება. Prod-ზე Vercel-ში დააყენე `EMAIL_ADAPTER=resend` (fallback `brevo`) და `SMS_ADAPTER=smsoffice` (fallback `senderge`) + შესაბამისი key/from-env `.env.example`-დან — ანგარიშების, key-ების და DNS-ის ჩამონათვალი: [`_doc/runbooks/first-deploy.md`](../_doc/runbooks/first-deploy.md) §1a. ორივე env დაუყენებლად production-ზე `NotifyConfigError('not_configured')` ↦ ⚠ ადმინში + Sentry.
