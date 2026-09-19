@@ -68,6 +68,11 @@ jobs:
       # getPayload() does locally) so test:int runs against the same schema
       # Vercel's build produces (ADR 0012 §7, ADR 0014 §9).
       - run: pnpm payload migrate
+      # Code review finding: guards against the migration snapshot chain
+      # drifting from src/payload.config.ts (a later .json losing tables an
+      # earlier one had) — the next migrate:create would then try to
+      # re-create things that already exist in prod.
+      - run: pnpm check:migrations
       - run: pnpm test:int
 
       - run: pnpm audit --prod --audit-level high

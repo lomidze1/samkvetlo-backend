@@ -14,6 +14,7 @@
     "lint": "cross-env NODE_OPTIONS=--no-deprecation eslint .",
     "typecheck": "tsc --noEmit",
     "check:ka": "tsx scripts/check-hardcoded-ka.ts",
+    "check:migrations": "tsx scripts/check-migrations-clean.ts",
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
     "seed": "tsx scripts/seed.ts",

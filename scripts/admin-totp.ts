@@ -96,7 +96,21 @@ async function main(): Promise<void> {
   await payload.update({
     collection: 'users',
     id: userId,
-    data: { totpSecret: secret, totpLastStep: null, totpEnabledAt: new Date().toISOString() },
+    // Code review finding: rotating the secret (lost phone, routine
+    // rotation) must also invalidate any session issued before the
+    // rotation — otherwise a still-valid cookie/JWT from before the
+    // rotation keeps working even though the authenticator entry that
+    // produced it no longer exists. totpFailCount/totpFailWindowStart are
+    // cleared too, so a rotation isn't immediately throttled by failures
+    // against the *old* secret.
+    data: {
+      totpSecret: secret,
+      totpLastStep: null,
+      totpEnabledAt: new Date().toISOString(),
+      totpFailCount: 0,
+      totpFailWindowStart: null,
+      sessions: [],
+    },
     overrideAccess: true,
   })
 

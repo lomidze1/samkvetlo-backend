@@ -165,6 +165,8 @@ export interface User {
   id: number;
   totpSecret?: string | null;
   totpLastStep?: number | null;
+  totpFailCount?: number | null;
+  totpFailWindowStart?: string | null;
   totpEnabledAt?: string | null;
   updatedAt: string;
   createdAt: string;
@@ -962,6 +964,8 @@ export interface PayloadMigration {
 export interface UsersSelect<T extends boolean = true> {
   totpSecret?: T;
   totpLastStep?: T;
+  totpFailCount?: T;
+  totpFailWindowStart?: T;
   totpEnabledAt?: T;
   updatedAt?: T;
   createdAt?: T;

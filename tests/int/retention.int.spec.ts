@@ -14,7 +14,7 @@ import { memoryEmailSender } from '@/server/notify/memoryAdapter'
 import { runRetention } from '@/server/retention/run'
 import type { CustomRequest, Order } from '@/payload-types'
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 let payload: Payload
 
@@ -294,6 +294,35 @@ describe('retention (T5.12, ADR 0014 §12)', () => {
       const reloaded = await payload.findByID({ collection: 'orders', id: order.id, overrideAccess: true, depth: 0 })
       expect((reloaded.statusHistory ?? []).length).toBe(historyLengthBefore)
     })
+
+    // Code review finding: sendAndReport.ts can write a raw provider error
+    // (echoing the recipient) into notifications[].error — anonymization
+    // must blank it, not just the top-level name/phone/email fields.
+    it('blanks notifications[].error (may contain the recipient), keeps channel/status/at', async () => {
+      const statusChangedAt = new Date(Date.now() - 2 * YEAR_MS - DAY_MS).toISOString()
+      const order = await createOrder({ status: 'delivered', statusChangedAt })
+      await payload.update({
+        collection: 'orders',
+        id: order.id,
+        data: {
+          notifications: [
+            { channel: 'email', status: 'failed', error: "Invalid 'to' field: giorgi@example.com", at: new Date().toISOString() },
+            { channel: 'sms', status: 'sent', at: new Date().toISOString() },
+          ],
+        },
+        overrideAccess: true,
+      })
+
+      await runRetention(payload)
+
+      const reloaded = await payload.findByID({ collection: 'orders', id: order.id, overrideAccess: true, depth: 0 })
+      const notifications = reloaded.notifications ?? []
+      expect(notifications).toHaveLength(2)
+      expect(notifications[0]!.error).toBeFalsy()
+      expect(notifications[0]!.channel).toBe('email')
+      expect(notifications[0]!.status).toBe('failed')
+      expect(notifications[1]!.status).toBe('sent')
+    })
   })
 
   describe('custom-request anonymization', () => {
@@ -319,6 +348,55 @@ describe('retention (T5.12, ADR 0014 §12)', () => {
       expect(reloaded.attachments ?? []).toHaveLength(0)
       expect(reloaded.anonymizedAt).toBeTruthy()
       expect(reloaded.number).toBe(request.number)
+
+      await expect(
+        payload.findByID({ collection: 'private-files', id: attachment.id, overrideAccess: true }),
+      ).rejects.toThrow()
+      attachmentIds.length = 0 // already gone
+    })
+
+    // Code review finding: a failed attachment delete (e.g. a transient
+    // storage error) must not be swallowed into `attachments: []` — the
+    // failed id stays on the request and anonymizedAt stays unset, so the
+    // next cron run retries just that attachment.
+    it('a failed attachment delete keeps the id and anonymizedAt unset; a later run retries and completes', async () => {
+      const attachment = await payload.create({
+        collection: 'private-files',
+        data: {},
+        file: {
+          data: await loadFixture('product-3000x2000.jpg'),
+          mimetype: 'image/jpeg',
+          name: 'sketch-retry.jpg',
+          size: (await loadFixture('product-3000x2000.jpg')).length,
+        },
+        overrideAccess: true,
+      })
+      attachmentIds.push(attachment.id)
+
+      const statusChangedAt = new Date(Date.now() - 2 * YEAR_MS - DAY_MS).toISOString()
+      const request = await createCustomRequest(statusChangedAt, attachment.id)
+
+      const deleteSpy = vi.spyOn(payload, 'delete').mockImplementationOnce(() => {
+        throw new Error('storage unavailable')
+      })
+
+      const firstResult = await runRetention(payload)
+      expect(firstResult.customRequestsAnonymized).toBe(0)
+      deleteSpy.mockRestore()
+
+      const afterFirstRun = await payload.findByID({ collection: 'custom-requests', id: request.id, overrideAccess: true, depth: 0 })
+      expect(afterFirstRun.anonymizedAt).toBeFalsy()
+      expect((afterFirstRun.attachments ?? []).length).toBe(1)
+      // PII is already blanked even though the record isn't "done" yet —
+      // re-blanking on the retry run is idempotent.
+      expect(afterFirstRun.name).toBe('—')
+
+      const secondResult = await runRetention(payload)
+      expect(secondResult.customRequestsAnonymized).toBeGreaterThanOrEqual(1)
+
+      const afterSecondRun = await payload.findByID({ collection: 'custom-requests', id: request.id, overrideAccess: true, depth: 0 })
+      expect(afterSecondRun.anonymizedAt).toBeTruthy()
+      expect(afterSecondRun.attachments ?? []).toHaveLength(0)
 
       await expect(
         payload.findByID({ collection: 'private-files', id: attachment.id, overrideAccess: true }),

@@ -203,6 +203,51 @@ describe('requireTotp / admin 2FA (T5.17, ADR 0018)', () => {
         await payload.delete({ collection: 'users', id: throttleUser.id, overrideAccess: true })
       }
     })
+
+    // Code review finding: the throttle counter used to be a live COUNT of
+    // recent login.totp-failed rows, so concurrent requests could each read
+    // the count before any of their own writes landed and all slip past
+    // the limit. users.totpFailCount is now an atomic `UPDATE ... SET
+    // count = count + 1` (see requireTotp.ts) — this asserts concurrent
+    // failures are never *lost* against each other (the count converges to
+    // the true number of attempts, not fewer), even though the decision
+    // each individual request makes is still based on the row it read at
+    // request start (see that comment for why that residual window can't
+    // be closed without a bigger change).
+    it('concurrent wrong-code attempts never lose an increment (atomic counter)', async () => {
+      const concurrentEmail = 'totp-concurrent-test@samkvetlo.local'
+      await payload.delete({ collection: 'users', where: { email: { equals: concurrentEmail } }, overrideAccess: true })
+      const concurrentUser = await payload.create({
+        collection: 'users',
+        data: { email: concurrentEmail, password: PASSWORD },
+        overrideAccess: true,
+      })
+      await enrollTotp(payload, concurrentUser.id)
+
+      try {
+        const attempts = 4
+        const responses = await Promise.all(
+          Array.from({ length: attempts }, () => restLogin({ email: concurrentEmail, password: PASSWORD, totp: '000000' })),
+        )
+        for (const response of responses) {
+          expect(response.status).toBe(401)
+        }
+
+        // The fire-and-forget writes land shortly after each 401 — poll
+        // until the row settles instead of asserting immediately.
+        let finalCount: number | null | undefined
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          const reloaded = await payload.findByID({ collection: 'users', id: concurrentUser.id, overrideAccess: true })
+          finalCount = reloaded.totpFailCount
+          if ((finalCount ?? 0) >= attempts) break
+          await new Promise((resolve) => setTimeout(resolve, 25))
+        }
+        expect(finalCount).toBe(attempts)
+      } finally {
+        await payload.delete({ collection: 'audit-events', where: { user: { equals: concurrentUser.id } }, overrideAccess: true })
+        await payload.delete({ collection: 'users', id: concurrentUser.id, overrideAccess: true })
+      }
+    })
   })
 
   describe('(7) totpSecret/totpLastStep never leave the API; an admin cannot set them by PATCH', () => {

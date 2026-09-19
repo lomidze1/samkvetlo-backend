@@ -102,8 +102,8 @@ async function anonymizeOldCustomRequests(payload: Payload, retentionYears: numb
   let anonymized = 0
   for (const request of docs) {
     if (request.anonymizedAt) continue
-    await anonymizeCustomRequest(payload, request)
-    anonymized += 1
+    const { anonymized: didAnonymize } = await anonymizeCustomRequest(payload, request)
+    if (didAnonymize) anonymized += 1
   }
   return anonymized
 }

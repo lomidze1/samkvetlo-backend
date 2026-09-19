@@ -59,6 +59,28 @@ export const Users: CollectionConfig = {
       admin: { hidden: true },
       access: { read: () => false, create: () => false, update: () => false },
     },
+    // Code review finding (ADR 0018 §2): the login throttle used to count
+    // recent `login.totp-failed` audit-events rows — a fire-and-forget,
+    // separate-transaction write (see requireTotp.ts's deadlock note),
+    // so two concurrent requests could each read the count before either
+    // insert lands and both slip past the 5-attempt limit. These two
+    // fields make the counter atomic: requireTotp.ts updates them with
+    // `req` (the login's own already-open transaction), so concurrent
+    // login attempts for the same user serialize on the same row lock
+    // addSessionToUser/resetLoginAttempts already hold, instead of racing.
+    {
+      name: 'totpFailCount',
+      type: 'number',
+      defaultValue: 0,
+      admin: { hidden: true },
+      access: { read: () => false, create: () => false, update: () => false },
+    },
+    {
+      name: 'totpFailWindowStart',
+      type: 'date',
+      admin: { hidden: true },
+      access: { read: () => false, create: () => false, update: () => false },
+    },
     {
       name: 'totpEnabledAt',
       type: 'date',
