@@ -28,6 +28,8 @@ export const SENTINEL = {
   ownerPhone: '+995500987654',
   /** site-settings.shareLinkTtlDays — a number, so it borrows the 987654 grep pattern. */
   shareLinkTtlDays: 987_654,
+  /** site-settings.retentionYears (T5.12) — a number, same 987654 grep pattern. */
+  retentionYears: 987_654,
   /** orders.name / .surname / .phone / .church / .email / .comment (PII, D25). */
   orderCustomerName: 'ZZSENT-CUSTOMER-7f3a',
   orderCustomerSurname: 'ZZSENT-SURNAME-7f3a',

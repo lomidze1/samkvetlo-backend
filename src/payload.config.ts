@@ -44,6 +44,7 @@ import {
 import { sitemapEndpoint } from './endpoints/public/sitemap'
 import { redirectEndpoint } from './endpoints/public/redirect'
 import { cronRatesEndpoint } from './endpoints/cronRates'
+import { cronRetentionEndpoint } from './endpoints/cronRetention'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -161,6 +162,7 @@ export default buildConfig({
     sitemapEndpoint,
     redirectEndpoint,
     cronRatesEndpoint,
+    cronRetentionEndpoint,
   ],
   graphQL: {
     disable: true,

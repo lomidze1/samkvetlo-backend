@@ -134,6 +134,7 @@ async function setSentinelSiteSettings(): Promise<void> {
       ownerPhones: [{ phone: SENTINEL.ownerPhone }],
       notifyCustomer: true,
       shareLinkTtlDays: SENTINEL.shareLinkTtlDays,
+      retentionYears: SENTINEL.retentionYears,
     },
     overrideAccess: true,
   })
@@ -142,7 +143,7 @@ async function setSentinelSiteSettings(): Promise<void> {
 async function resetSiteSettings(): Promise<void> {
   await payload.updateGlobal({
     slug: 'site-settings',
-    data: { ownerEmails: [], ownerPhones: [], notifyCustomer: false, shareLinkTtlDays: 90 },
+    data: { ownerEmails: [], ownerPhones: [], notifyCustomer: false, shareLinkTtlDays: 90, retentionYears: 2 },
     overrideAccess: true,
   })
 }

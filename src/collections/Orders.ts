@@ -2,6 +2,7 @@ import type { CollectionConfig } from 'payload'
 
 import { isAdmin } from '../access/isAdmin'
 import { isAdminField } from '../access/isAdminField'
+import { createAnonymizeEndpoint } from '../endpoints/anonymize'
 import { computeOrderTotals } from './hooks/orderTotals'
 import { generateOrderNumber } from './hooks/orderNumber'
 import { trackOrderStatusHistory } from './hooks/orderStatusHistory'
@@ -41,6 +42,9 @@ export const Orders: CollectionConfig = {
     beforeChange: [computeOrderTotals, trackOrderStatusHistory],
     afterChange: [generateOrderNumber],
   },
+  // T5.12 (ADR 0014 §12): manual "ანონიმიზაცია" — same anonymizeOrder the
+  // retention cron uses.
+  endpoints: [createAnonymizeEndpoint('orders')],
   fields: [
     {
       name: 'number',
@@ -83,7 +87,19 @@ export const Orders: CollectionConfig = {
       name: 'anonymizedAt',
       type: 'date',
       label: 'ანონიმიზაციის დრო',
-      admin: { readOnly: true, description: 'ივსება ღამის cron-ით (D25) — ხელით არ ივსება' },
+      admin: { readOnly: true, description: 'ივსება ღამის cron-ით (D25) ან „ანონიმიზაცია“ ღილაკით — ველის რედაქტირება არ არის შესაძლებელი' },
+    },
+    // T5.12: sidebar action calling the endpoint above.
+    {
+      name: 'anonymizeAction',
+      type: 'ui',
+      label: 'ანონიმიზაცია',
+      admin: {
+        position: 'sidebar',
+        components: {
+          Field: '/components/admin/AnonymizeButton#AnonymizeButton',
+        },
+      },
     },
 
     // Line items (ADR 0003 §4.5) — every price field is a frozen snapshot.

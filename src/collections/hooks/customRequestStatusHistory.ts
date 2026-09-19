@@ -16,6 +16,11 @@ export const trackCustomRequestStatusHistory: CollectionBeforeChangeHook = ({
 }) => {
   if (!data) return data
 
+  // ADR 0014 §12 / T5.12: anonymization runs through the Local API with
+  // this context flag — it must not touch statusHistory/statusChangedAt
+  // (same guard as trackOrderStatusHistory).
+  if (req.context?.anonymizing) return data
+
   if (operation === 'create') {
     return { ...data, statusChangedAt: data.statusChangedAt ?? new Date().toISOString() }
   }

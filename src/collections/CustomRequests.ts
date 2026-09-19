@@ -2,6 +2,7 @@ import type { CollectionConfig } from 'payload'
 
 import { isAdmin } from '../access/isAdmin'
 import { isAdminField } from '../access/isAdminField'
+import { createAnonymizeEndpoint } from '../endpoints/anonymize'
 import { CUSTOM_REQUEST_CATEGORY_VALUES } from '../shared/contract/customRequest'
 import { ka } from '../i18n/ka'
 import { generateCustomRequestNumber } from './hooks/customRequestNumber'
@@ -41,6 +42,9 @@ export const CustomRequests: CollectionConfig = {
     beforeChange: [trackCustomRequestStatusHistory],
     afterChange: [generateCustomRequestNumber],
   },
+  // T5.12 (ADR 0014 §12): manual "ანონიმიზაცია" — same
+  // anonymizeCustomRequest the retention cron uses.
+  endpoints: [createAnonymizeEndpoint('custom-requests')],
   fields: [
     {
       name: 'number',
@@ -88,7 +92,19 @@ export const CustomRequests: CollectionConfig = {
       name: 'anonymizedAt',
       type: 'date',
       label: 'ანონიმიზაციის დრო',
-      admin: { readOnly: true, description: 'ივსება ღამის cron-ით (D25) — ხელით არ ივსება' },
+      admin: { readOnly: true, description: 'ივსება ღამის cron-ით (D25) ან „ანონიმიზაცია“ ღილაკით — ველის რედაქტირება არ არის შესაძლებელი' },
+    },
+    // T5.12: sidebar action calling the endpoint above.
+    {
+      name: 'anonymizeAction',
+      type: 'ui',
+      label: 'ანონიმიზაცია',
+      admin: {
+        position: 'sidebar',
+        components: {
+          Field: '/components/admin/AnonymizeButton#AnonymizeButton',
+        },
+      },
     },
 
     // Internal-only (ADR 0011 §3).

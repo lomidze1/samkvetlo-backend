@@ -73,6 +73,17 @@ export const SiteSettings: GlobalConfig = {
       min: 1,
       access: { read: isAdminField },
     },
+    {
+      // ADR 0014 §12 (D25), T5.12: the retention cron's anonymization clock,
+      // kept here (not hardcoded) so a lawyer-driven change never needs a
+      // code deploy.
+      name: 'retentionYears',
+      type: 'number',
+      label: 'PII შენახვის ვადა (წელი)',
+      defaultValue: 2,
+      min: 1,
+      access: { read: isAdminField },
+    },
     // T5.x SEO contract: LocalBusiness JSON-LD needs a structured address,
     // separate from the free-text `address` above — kept off by default
     // (`publishAddress`) since the owner may not want the street address

@@ -81,5 +81,14 @@ export const ka = {
         loginCodeLabel: 'ავთენტიფიკატორის კოდი',
       },
     },
+    // ADR 0014 §12 (D25) / T5.12: the retention cron's owner digest — sent
+    // only when at least one order has an open financial obligation
+    // (paid/ordered-from-supplier/in-transit) past the 2-year mark, so it
+    // never auto-anonymizes.
+    retention: {
+      openOrdersDigestSubject: (count: number) => `${count} შეკვეთა 2 წელზე მეტია ღიაა`,
+      openOrdersDigestLine: (number: string, status: string) => `${number} — სტატუსი: ${status}`,
+      alreadyAnonymized: 'უკვე ანონიმიზებულია',
+    },
   },
 } as const

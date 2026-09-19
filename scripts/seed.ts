@@ -157,8 +157,20 @@ async function ensureSiteSettingsOwnerContacts(payload: Payload): Promise<void> 
 interface StaticPageSeed {
   slug: 'how-we-work' | 'about' | 'delivery' | 'contact' | 'privacy'
   title: string
-  text: string
+  text: string | string[]
 }
+
+// ADR 0014 §12 (D25, T5.12): the privacy page's 6 mandatory points — placeholder
+// copy (⚖️ lawyer review still pending), but with the real retention rule
+// (2 years) and mechanism, not "text coming soon". One paragraph per point.
+const PRIVACY_PAGE_PARAGRAPHS: string[] = [
+  '1. რას ვაგროვებთ: სახელი, გვარი, ტელეფონი, ეკლესია/სამრევლო, მიწოდების ზონა და ქალაქი, ელფოსტა და კომენტარი (არჩევითი), ინდ. მოთხოვნის შემთხვევაში — თანდართული ფაილები. IP მისამართს ვინახავთ მხოლოდ დაჰეშილი სახით, 30 დღე.',
+  '2. რატომ ვაგროვებთ: შეკვეთის დადასტურება და თქვენთან დაკავშირება, მიწოდების ორგანიზება, ბუღალტრული აღრიცხვა. მარკეტინგისთვის ამ მონაცემებს არ ვიყენებთ.',
+  '3. რამდენ ხანს ვინახავთ: 2 წელი შეკვეთის ან მოთხოვნის ბოლო სტატუსის ცვლილებიდან (მაგალითად, მიწოდებიდან). ამის შემდეგ საკონტაქტო მონაცემები ავტომატურად ანონიმდება. ბუღალტრული ჩანაწერი (ნომერი, ნივთები, თანხა, თარიღები) საკონტაქტო მონაცემების გარეშე რჩება კანონით დადგენილი ვადით. გაზიარების ბმული აქტიურია 90 დღე, სარეზერვო ასლები — 35 დღე.',
+  '4. ვინ ამუშავებს მონაცემებს: სერვერი (Vercel), მონაცემთა ბაზა (Neon), ფაილების საცავი (Cloudflare), შეცდომების მონიტორინგი (Sentry) და ელფოსტა/SMS-ის პროვაიდერი.',
+  '5. თქვენი უფლებები: მონაცემების ნახვა, შესწორება ან ვადამდე წაშლა შეგიძლიათ მოითხოვოთ ტელეფონით ან ელფოსტით.',
+  '6. საკონტაქტო ინფორმაცია მოცემულია საიტის სათაურში/footer-ში.',
+]
 
 // T2.7 needs `pages` content to render at all; without this every static
 // route 404s in a fresh dev DB. Real copy (and the lawyer-reviewed privacy
@@ -169,8 +181,31 @@ const STATIC_PAGES: StaticPageSeed[] = [
   { slug: 'about', title: 'ჩვენ შესახებ', text: 'სამკვეთლო აკეთებს დიდ ზარებს და საეკლესიო ინვენტარს შეკვეთით. სრული ტექსტი მალე დაემატება.' },
   { slug: 'delivery', title: 'მიწოდება', text: 'თბილისში მიწოდება უფასოა. სხვა ქალაქებში — ზონის მიხედვით. დეტალები ცხრილშია.' },
   { slug: 'contact', title: 'კონტაქტი', text: 'დაგვირეკეთ ან მოგვწერეთ — სრული საკონტაქტო ინფორმაცია მალე დაემატება.' },
-  { slug: 'privacy', title: 'კონფიდენციალურობა', text: 'ტექსტი მალე დაემატება, გადამოწმდება იურისტის მიერ (⚖️, ADR 0014 §12).' },
+  { slug: 'privacy', title: 'კონფიდენციალურობა', text: PRIVACY_PAGE_PARAGRAPHS },
 ]
+
+function richTextFrom(text: string | string[]) {
+  const paragraphs = Array.isArray(text) ? text : [text]
+  return {
+    root: {
+      type: 'root' as const,
+      direction: null,
+      format: '' as const,
+      indent: 0,
+      version: 1 as const,
+      children: paragraphs.map((paragraph) => ({
+        type: 'paragraph' as const,
+        direction: null,
+        format: '' as const,
+        indent: 0,
+        version: 1 as const,
+        children: [
+          { type: 'text' as const, detail: 0, format: 0, mode: 'normal' as const, style: '', text: paragraph, version: 1 as const },
+        ],
+      })),
+    },
+  }
+}
 
 async function ensureStaticPages(payload: Payload): Promise<void> {
   for (const page of STATIC_PAGES) {
@@ -183,7 +218,7 @@ async function ensureStaticPages(payload: Payload): Promise<void> {
     if (docs[0]) continue
     await payload.create({
       collection: 'pages',
-      data: { slug: page.slug, title: page.title, content: EMPTY_RICH_TEXT(page.text) },
+      data: { slug: page.slug, title: page.title, content: richTextFrom(page.text) },
       overrideAccess: true,
       context: SEED_CONTEXT,
     })

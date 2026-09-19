@@ -14,8 +14,15 @@ interface OrderItemInput {
  * trusted (deliveryFeeGel itself is a frozen snapshot, locked separately by
  * field access — see Orders.ts).
  */
-export const computeOrderTotals: CollectionBeforeChangeHook = ({ data }) => {
+export const computeOrderTotals: CollectionBeforeChangeHook = ({ data, req }) => {
   if (!data) return data
+
+  // ADR 0014 §12 / T5.12: an anonymization update only ever touches PII
+  // text fields, never `items`/`deliveryFeeGel` — without this guard,
+  // `data.items` would be `undefined` on that partial update and get
+  // recomputed to `[]`, wiping the frozen line-item/total snapshot the
+  // retention rule is explicitly required to leave untouched.
+  if (req.context?.anonymizing) return data
 
   const items = ((data.items ?? []) as OrderItemInput[]).map((item) => {
     const unitPrice = item.unitPrice ?? 0

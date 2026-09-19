@@ -550,7 +550,7 @@ export interface Order {
   email?: string | null;
   comment?: string | null;
   /**
-   * ივსება ღამის cron-ით (D25) — ხელით არ ივსება
+   * ივსება ღამის cron-ით (D25) ან „ანონიმიზაცია“ ღილაკით — ველის რედაქტირება არ არის შესაძლებელი
    */
   anonymizedAt?: string | null;
   items: {
@@ -747,7 +747,7 @@ export interface CustomRequest {
   budgetText?: string | null;
   deadlineText?: string | null;
   /**
-   * ივსება ღამის cron-ით (D25) — ხელით არ ივსება
+   * ივსება ღამის cron-ით (D25) ან „ანონიმიზაცია“ ღილაკით — ველის რედაქტირება არ არის შესაძლებელი
    */
   anonymizedAt?: string | null;
   status: 'new' | 'contacted' | 'quoted' | 'won' | 'lost';
@@ -1557,6 +1557,7 @@ export interface SiteSetting {
     | null;
   notifyCustomer?: boolean | null;
   shareLinkTtlDays?: number | null;
+  retentionYears?: number | null;
   store?: {
     publishAddress?: boolean | null;
     streetAddress?: string | null;
@@ -1622,6 +1623,7 @@ export interface SiteSettingsSelect<T extends boolean = true> {
       };
   notifyCustomer?: T;
   shareLinkTtlDays?: T;
+  retentionYears?: T;
   store?:
     | T
     | {
