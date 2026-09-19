@@ -121,13 +121,27 @@ async function ensureAdmin(payload: Payload): Promise<void> {
  * default, since nothing seeded it. A fake, obviously-placeholder number
  * lets those sections render in dev; the owner sets the real one in the
  * admin before launch (never overwritten here once set).
+ *
+ * M11 review fix (medium #1): `seed:base` (`runBaseSeed`) is meant to run
+ * against a fresh **production** database (M4 — "just enough for every
+ * public route to render before the owner adds real products"), so it must
+ * never write this dev-only placeholder there — a real visitor could see
+ * and call `+995 555 00 00 00`. Only the full dev/test seed (`runSeed`)
+ * passes `allowPlaceholder: true`; `runBaseSeed` takes real values from
+ * `SEED_SITE_PHONE`/`SEED_SITE_PHONE_SECONDARY` if the operator set them,
+ * and otherwise leaves the field empty (the site simply renders no phone
+ * section, same as an untouched fresh install) rather than show a fake one.
  */
-async function ensureSiteSettingsPhone(payload: Payload): Promise<void> {
+async function ensureSiteSettingsPhone(payload: Payload, options: { allowPlaceholder: boolean }): Promise<void> {
   const settings = await payload.findGlobal({ slug: 'site-settings', overrideAccess: true })
   if (settings.phone) return
+  const phone = process.env.SEED_SITE_PHONE ?? (options.allowPlaceholder ? SEED_PLACEHOLDER_PHONE : undefined)
+  if (!phone) return
+  const phoneSecondary =
+    process.env.SEED_SITE_PHONE_SECONDARY ?? (options.allowPlaceholder ? SEED_PLACEHOLDER_PHONE_SECONDARY : undefined)
   await payload.updateGlobal({
     slug: 'site-settings',
-    data: { phone: SEED_PLACEHOLDER_PHONE, phoneSecondary: SEED_PLACEHOLDER_PHONE_SECONDARY },
+    data: { phone, phoneSecondary },
     overrideAccess: true,
     context: SEED_CONTEXT,
   })
@@ -142,14 +156,27 @@ async function ensureSiteSettingsPhone(payload: Payload): Promise<void> {
 const SEED_PLACEHOLDER_OWNER_EMAIL = 'owner@samkvetlo.local'
 const SEED_PLACEHOLDER_OWNER_PHONE = '+995500000000'
 
-async function ensureSiteSettingsOwnerContacts(payload: Payload): Promise<void> {
+/**
+ * M11 review fix (medium #1): same reasoning as ensureSiteSettingsPhone —
+ * `runBaseSeed` must never write `owner@samkvetlo.local`/`+995500000000` as
+ * the recipients for real customer order notifications (an order's SMS
+ * would go to whoever actually holds that Georgian number). `runBaseSeed`
+ * takes real values from `SEED_OWNER_EMAIL`/`SEED_OWNER_PHONE` if set, else
+ * leaves both empty — `notifyOrderCreated` (src/server/orders/notifyOrder.ts)
+ * already skips a channel with zero recipients rather than erroring, so an
+ * empty owner contact list means "not yet configured", not a crash.
+ */
+async function ensureSiteSettingsOwnerContacts(payload: Payload, options: { allowPlaceholder: boolean }): Promise<void> {
   const settings = await payload.findGlobal({ slug: 'site-settings', overrideAccess: true })
   if ((settings.ownerEmails?.length ?? 0) > 0 || (settings.ownerPhones?.length ?? 0) > 0) return
+  const email = process.env.SEED_OWNER_EMAIL ?? (options.allowPlaceholder ? SEED_PLACEHOLDER_OWNER_EMAIL : undefined)
+  const phone = process.env.SEED_OWNER_PHONE ?? (options.allowPlaceholder ? SEED_PLACEHOLDER_OWNER_PHONE : undefined)
+  if (!email && !phone) return
   await payload.updateGlobal({
     slug: 'site-settings',
     data: {
-      ownerEmails: [{ email: SEED_PLACEHOLDER_OWNER_EMAIL }],
-      ownerPhones: [{ phone: SEED_PLACEHOLDER_OWNER_PHONE }],
+      ...(email ? { ownerEmails: [{ email }] } : {}),
+      ...(phone ? { ownerPhones: [{ phone }] } : {}),
     },
     overrideAccess: true,
     context: SEED_CONTEXT,
@@ -602,8 +629,10 @@ async function seedDeliveryZones(payload: Payload): Promise<void> {
  * helper it calls — never overwrites a value the owner already edited.
  */
 export async function runBaseSeed(payload: Payload): Promise<void> {
-  await ensureSiteSettingsPhone(payload)
-  await ensureSiteSettingsOwnerContacts(payload)
+  // M11 review fix (medium #1): no placeholder phone/owner-contacts on a
+  // base seed — see ensureSiteSettingsPhone/ensureSiteSettingsOwnerContacts.
+  await ensureSiteSettingsPhone(payload, { allowPlaceholder: false })
+  await ensureSiteSettingsOwnerContacts(payload, { allowPlaceholder: false })
   await ensureStaticPages(payload)
   await seedDeliveryZones(payload)
 }
@@ -612,8 +641,8 @@ export async function runSeed(payload: Payload): Promise<void> {
   const sentinelMode = process.env.SEED_SENTINEL === '1'
 
   await ensureAdmin(payload)
-  await ensureSiteSettingsPhone(payload)
-  await ensureSiteSettingsOwnerContacts(payload)
+  await ensureSiteSettingsPhone(payload, { allowPlaceholder: true })
+  await ensureSiteSettingsOwnerContacts(payload, { allowPlaceholder: true })
   await ensureStaticPages(payload)
 
   const bellsId = await upsertCategory(payload, 'ზარები')
@@ -830,27 +859,50 @@ export async function teardownSeed(payload: Payload): Promise<void> {
     .catch(() => undefined)
 }
 
+// M11 review fix (medium #2): docker-compose.yml names the backend's own
+// Postgres service `db` — a script running *inside* that compose network
+// legitimately connects to `db`, everything else is somebody else's
+// database. An unparseable/missing DATABASE_URL isn't a local-host
+// green light on its own — refusesToRunOnProd only skips the host check
+// when the caller passed none at all (i.e. this predicate is being asked
+// about NODE_ENV alone), never on a URL it couldn't parse.
+const LOCAL_DATABASE_HOSTS = new Set(['localhost', '127.0.0.1', 'db'])
+
+function isLocalDatabaseHost(databaseUrl: string | undefined): boolean {
+  if (databaseUrl === undefined) return true
+  try {
+    return LOCAL_DATABASE_HOSTS.has(new URL(databaseUrl).hostname)
+  } catch {
+    return false
+  }
+}
+
 /**
- * M4: whether `seed:base` may run on prod is an open owner question (owner
- * rejected the *full* `pnpm seed` running there on 2026-09-18 — `seed:base`
- * carries no demo data, but running it there is still the owner's call, not
- * ours). Refuse by default; `--allow-prod` is the explicit override this
- * task's acceptance criteria asks for, never a default. A pure predicate
- * (no `process.exit`) so it's unit-testable; `main` below is the only
- * caller that acts on it.
+ * M4 + M11 review fix (medium #2): the *full* demo seed (sentinel/demo
+ * catalog data) must never run on prod — the owner explicitly rejected
+ * that on 2026-09-18. The original guard only checked `--base` +
+ * `NODE_ENV=production`, which left two gaps: (a) the full `pnpm seed`
+ * (no `--base`) was never refused at all, on any DATABASE_URL; (b) a
+ * `DATABASE_URL` pointed at a real (e.g. Neon) host with `NODE_ENV` left
+ * at its local default (`development`/unset) sailed straight through.
+ * Now both seed modes are refused whenever `NODE_ENV=production` *or*
+ * `DATABASE_URL`'s host isn't the local Postgres/docker-compose one —
+ * `--allow-prod` is the one explicit override, same flag as before, never
+ * a default. A pure predicate (no `process.exit`) so it's unit-testable;
+ * `main` below is the only caller that acts on it.
  */
-export function refusesToRunOnProd(args: string[], nodeEnv: string | undefined): boolean {
-  const isBase = args.includes('--base')
-  const allowProd = args.includes('--allow-prod')
-  return isBase && nodeEnv === 'production' && !allowProd
+export function refusesToRunOnProd(args: string[], nodeEnv: string | undefined, databaseUrl?: string): boolean {
+  if (args.includes('--allow-prod')) return false
+  return nodeEnv === 'production' || !isLocalDatabaseHost(databaseUrl)
 }
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
-  if (refusesToRunOnProd(args, process.env.NODE_ENV)) {
+  if (refusesToRunOnProd(args, process.env.NODE_ENV, process.env.DATABASE_URL)) {
     console.error(
-      'seed:base refused: NODE_ENV=production. Pass --allow-prod to run anyway ' +
-        '(see M4, _doc/plan/implementation-plan.md "MVP-მდე" — running seed:base on prod is still an open owner decision).',
+      'seed refused: NODE_ENV=production or DATABASE_URL is not a local/docker-compose host. ' +
+        'Pass --allow-prod to run anyway (see M4, _doc/plan/implementation-plan.md "MVP-მდე" — ' +
+        'the full demo seed must never run on prod; seed:base on prod is still an open owner decision).',
     )
     process.exit(1)
   }

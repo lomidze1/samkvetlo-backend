@@ -16,6 +16,13 @@ import type { CustomRequest, Order } from '@/payload-types'
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// vi.mock is hoisted above the static imports above, so the factory can't
+// close over a plain top-level const (temporal dead zone) — vi.hoisted
+// gives it a binding that exists by the time the factory runs. Same
+// pattern as ratesRecompute.int.spec.ts's own Sentry mock.
+const { captureMessage } = vi.hoisted(() => ({ captureMessage: vi.fn() }))
+vi.mock('@sentry/nextjs', () => ({ captureMessage }))
+
 let payload: Payload
 
 const FIXTURES_DIR = path.resolve(__dirname, '../fixtures')
@@ -143,6 +150,7 @@ describe('retention (T5.12, ADR 0014 §12)', () => {
   beforeEach(async () => {
     process.env.EMAIL_ADAPTER = 'memory'
     memoryEmailSender.reset()
+    captureMessage.mockClear()
     await payload.updateGlobal({
       slug: 'site-settings',
       data: { retentionYears: 2, ownerEmails: [{ email: OWNER_EMAIL }] },
@@ -265,6 +273,35 @@ describe('retention (T5.12, ADR 0014 §12)', () => {
       const digest = memoryEmailSender.sent.find((email) => email.to.includes(OWNER_EMAIL))
       expect(digest).toBeTruthy()
       expect(digest!.text).toContain(order.number)
+    })
+
+    // M11 review fix (low): a real adapter failure sending the digest must
+    // not throw out of runRetention — the anonymization work above it
+    // already ran and committed. Same pattern/assertions as
+    // ratesRecompute.int.spec.ts's own "an email sender failure does not
+    // throw" test.
+    it('a digest email sender failure does not throw — Sentry gets name/code only, no PII', async () => {
+      const providerError = Object.assign(new Error('ProviderError: rate_limit_exceeded (someone@example.com)'), {
+        name: 'ProviderError',
+        code: 'rate_limit_exceeded',
+      })
+      const sendSpy = vi.spyOn(memoryEmailSender, 'send').mockRejectedValueOnce(providerError)
+
+      const statusChangedAt = new Date(Date.now() - 3 * YEAR_MS).toISOString()
+      await createOrder({ status: 'paid', statusChangedAt })
+
+      try {
+        const result = await runRetention(payload)
+        expect(result.ordersSkippedOpen).toBeGreaterThanOrEqual(1)
+
+        expect(captureMessage).toHaveBeenCalledTimes(1)
+        const [message, args] = captureMessage.mock.calls[0]!
+        expect(message).toBe('notification failed: email')
+        expect(args).toEqual({ level: 'warning', extra: { channel: 'email', name: 'ProviderError', code: 'rate_limit_exceeded' } })
+        expect(JSON.stringify(args)).not.toContain('someone@example.com')
+      } finally {
+        sendSpy.mockRestore()
+      }
     })
 
     it('a second run is idempotent — no error, no double-processing', async () => {

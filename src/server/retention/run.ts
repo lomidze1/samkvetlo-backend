@@ -1,4 +1,5 @@
 import type { Payload } from 'payload'
+import * as Sentry from '@sentry/nextjs'
 
 import { ka } from '../../i18n/ka'
 import { getEmailSender } from '../notify'
@@ -135,11 +136,27 @@ export async function runRetention(payload: Payload): Promise<RetentionResult> {
       .map((entry) => entry.email)
       .filter((email): email is string => Boolean(email))
     if (ownerEmails.length > 0) {
-      await getEmailSender().send({
-        to: ownerEmails,
-        subject: ka.server.retention.openOrdersDigestSubject(skippedLines.length),
-        text: skippedLines.join('\n'),
-      })
+      // M11 review fix (low): the anonymization above already ran and
+      // committed (this whole run is a series of independent Local API
+      // calls, per this function's own doc comment) — a real adapter
+      // failure sending this digest must not 500 the cron that called us.
+      // Same pattern as recompute.ts's own needs-review digest.
+      try {
+        await getEmailSender().send({
+          to: ownerEmails,
+          subject: ka.server.retention.openOrdersDigestSubject(skippedLines.length),
+          text: skippedLines.join('\n'),
+        })
+      } catch (err) {
+        const name = err instanceof Error ? err.name : 'Error'
+        const withCode = err as { code?: number | string }
+        const code = typeof withCode?.code === 'string' || typeof withCode?.code === 'number' ? withCode.code : undefined
+        payload.logger.error({ err }, 'notification failed: email')
+        Sentry.captureMessage('notification failed: email', {
+          level: 'warning',
+          extra: { channel: 'email', name, ...(code !== undefined ? { code } : {}) },
+        })
+      }
     }
   }
 

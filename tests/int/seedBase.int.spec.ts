@@ -87,10 +87,65 @@ describe('pnpm seed:base (M4): no catalog, idempotent, additive-only', () => {
     expect(settings.roundingStepGel).toBe(10)
   })
 
-  it('site-settings gets a phone and at least one owner contact', async () => {
+  // M11 review fix (medium #1): runBaseSeed is meant to run against a
+  // fresh *production* database — it must never write the dev-only
+  // placeholder phone (`+995 555 00 00 00`) or owner contacts
+  // (`owner@samkvetlo.local`/`+995500000000`) there. A real customer's
+  // order notification going to that placeholder phone would reach
+  // whoever actually holds that Georgian number, not the owner.
+  it('leaves phone and owner contacts empty when nothing is already set and no SEED_* env override is given', async () => {
+    await payload.updateGlobal({
+      slug: 'site-settings',
+      data: { phone: '', phoneSecondary: '', ownerEmails: [], ownerPhones: [] },
+      overrideAccess: true,
+    })
+
+    await runBaseSeed(payload)
+
     const settings = await payload.findGlobal({ slug: 'site-settings', overrideAccess: true })
-    expect(settings.phone).toBeTruthy()
-    expect((settings.ownerEmails?.length ?? 0) + (settings.ownerPhones?.length ?? 0)).toBeGreaterThan(0)
+    expect(settings.phone).toBeFalsy()
+    expect(settings.ownerEmails ?? []).toHaveLength(0)
+    expect(settings.ownerPhones ?? []).toHaveLength(0)
+  })
+
+  it('takes real values from SEED_SITE_PHONE/SEED_OWNER_EMAIL/SEED_OWNER_PHONE when set', async () => {
+    await payload.updateGlobal({
+      slug: 'site-settings',
+      data: { phone: '', phoneSecondary: '', ownerEmails: [], ownerPhones: [] },
+      overrideAccess: true,
+    })
+
+    process.env.SEED_SITE_PHONE = '+995 32 200 00 00'
+    process.env.SEED_OWNER_EMAIL = 'real-owner@example.com'
+    process.env.SEED_OWNER_PHONE = '+995322000001'
+    try {
+      await runBaseSeed(payload)
+    } finally {
+      delete process.env.SEED_SITE_PHONE
+      delete process.env.SEED_OWNER_EMAIL
+      delete process.env.SEED_OWNER_PHONE
+    }
+
+    const settings = await payload.findGlobal({ slug: 'site-settings', overrideAccess: true })
+    expect(settings.phone).toBe('+995 32 200 00 00')
+    expect(settings.ownerEmails?.map((e) => e.email)).toEqual(['real-owner@example.com'])
+    expect(settings.ownerPhones?.map((p) => p.phone)).toEqual(['+995322000001'])
+
+    // Restore the same dev-only placeholder `runSeed`/other int test files
+    // in this shared DB expect to find (see ensureSiteSettingsPhone/
+    // ensureSiteSettingsOwnerContacts in scripts/seed.ts) — this test's own
+    // reset above must not leak an empty site-settings into files that run
+    // after this one in the same samkvetlo_test DB.
+    await payload.updateGlobal({
+      slug: 'site-settings',
+      data: {
+        phone: '+995 555 00 00 00',
+        phoneSecondary: '+995 555 00 00 01',
+        ownerEmails: [{ email: 'owner@samkvetlo.local' }],
+        ownerPhones: [{ phone: '+995500000000' }],
+      },
+      overrideAccess: true,
+    })
   })
 
   it('running it twice is idempotent — same row counts, and never overwrites an edited page', async () => {
