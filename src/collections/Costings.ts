@@ -15,7 +15,16 @@ export const Costings: CollectionConfig = {
   },
   admin: {
     useAsTitle: 'variant',
+    // M8: the columns needed to see at a glance which variant awaits
+    // confirmation (see `defaultSort` below) — before this, the list
+    // showed only id/variant/updatedAt and the owner had to open each
+    // record to check `approvedAt`.
+    defaultColumns: ['variant', 'supplier', 'indicator', 'proposedPriceGel', 'suggestedPriceGel', 'approvedAt'],
   },
+  // '-approvedAt' (not 'approvedAt'): Postgres's ASC default is NULLS
+  // LAST, so ascending would bury the unapproved (null) rows at the
+  // *bottom*. DESC defaults to NULLS FIRST, which is what we want here.
+  defaultSort: '-approvedAt',
   access: {
     read: isAdmin,
     create: isAdmin,

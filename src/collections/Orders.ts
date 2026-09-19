@@ -32,6 +32,10 @@ export const Orders: CollectionConfig = {
     useAsTitle: 'number',
     defaultColumns: ['number', 'status', 'totalGel', 'createdAt'],
   },
+  // M8: newest-first by default — without this, Payload sorts by createdAt
+  // ascending (oldest orders first), which put every new order a full
+  // page-scroll away from the top of the daily list.
+  defaultSort: '-createdAt',
   access: {
     read: isAdmin,
     create: () => false,

@@ -32,6 +32,8 @@ export const CustomRequests: CollectionConfig = {
     useAsTitle: 'number',
     defaultColumns: ['number', 'category', 'status', 'name', 'surname', 'createdAt'],
   },
+  // M8: newest-first by default, same reasoning as Orders.ts.
+  defaultSort: '-createdAt',
   access: {
     read: isAdmin,
     create: () => false,
