@@ -4,6 +4,8 @@ import type { EmailSender, SmsSender } from './types'
 
 export type { EmailMessage, EmailSender, SmsMessage, SmsSender } from './types'
 export { memoryEmailSender, memorySmsSender } from './memoryAdapter'
+export { sendAndReport } from './sendAndReport'
+export type { NotificationChannel, NotificationLogEntry } from './sendAndReport'
 
 // ADR 0007: adapter choice is read on every call (not cached at import
 // time), so a test can flip EMAIL_ADAPTER/SMS_ADAPTER=memory at runtime and

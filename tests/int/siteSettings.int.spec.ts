@@ -2,7 +2,9 @@
 import { getPayload, type Payload } from 'payload'
 import config from '@/payload.config'
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { getPublicSiteSettings } from '@/server/public/siteSettings'
+
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 let payload: Payload
 
@@ -51,7 +53,7 @@ describe('site-settings global (T1.5, ADR 0005 layer 2 / ADR 0007)', () => {
   it('an admin read includes ownerEmails/ownerPhones', async () => {
     const admin = await payload.create({
       collection: 'users',
-      data: { email: `site-settings-admin-${Date.now()}@samkvetlo.local`, password: 'test-password' },
+      data: { email: `site-settings-admin-${Date.now()}@samkvetlo.local`, password: 'test-password-16chars' },
     })
     try {
       const settings = await payload.findGlobal({
@@ -68,5 +70,64 @@ describe('site-settings global (T1.5, ADR 0005 layer 2 / ADR 0007)', () => {
   it('configuratorEnabled defaults to false', async () => {
     const settings = await payload.findGlobal({ slug: 'site-settings', overrideAccess: true })
     expect(settings.configuratorEnabled).toBe(false)
+  })
+
+  describe('store address (T5.x SEO contract)', () => {
+    afterEach(async () => {
+      await payload.updateGlobal({
+        slug: 'site-settings',
+        data: { store: { publishAddress: false, streetAddress: '', addressLocality: '', postalCode: '' } },
+        overrideAccess: true,
+      })
+    })
+
+    it('is null when publishAddress is false, even with street + locality filled in', async () => {
+      await payload.updateGlobal({
+        slug: 'site-settings',
+        data: {
+          store: { publishAddress: false, streetAddress: 'რუსთაველის გამზ. 1', addressLocality: 'თბილისი' },
+        },
+        overrideAccess: true,
+      })
+      const dto = await getPublicSiteSettings(payload)
+      expect(dto.store).toBeNull()
+    })
+
+    it('is null when publishAddress is true but streetAddress or addressLocality is empty', async () => {
+      await payload.updateGlobal({
+        slug: 'site-settings',
+        data: { store: { publishAddress: true, streetAddress: '', addressLocality: 'თბილისი' } },
+        overrideAccess: true,
+      })
+      expect((await getPublicSiteSettings(payload)).store).toBeNull()
+
+      await payload.updateGlobal({
+        slug: 'site-settings',
+        data: { store: { publishAddress: true, streetAddress: 'რუსთაველის გამზ. 1', addressLocality: '' } },
+        overrideAccess: true,
+      })
+      expect((await getPublicSiteSettings(payload)).store).toBeNull()
+    })
+
+    it('is published only once publishAddress is true and both required fields are set', async () => {
+      await payload.updateGlobal({
+        slug: 'site-settings',
+        data: {
+          store: {
+            publishAddress: true,
+            streetAddress: 'რუსთაველის გამზ. 1',
+            addressLocality: 'თბილისი',
+            postalCode: '0108',
+          },
+        },
+        overrideAccess: true,
+      })
+      const dto = await getPublicSiteSettings(payload)
+      expect(dto.store).toEqual({
+        streetAddress: 'რუსთაველის გამზ. 1',
+        addressLocality: 'თბილისი',
+        postalCode: '0108',
+      })
+    })
   })
 })

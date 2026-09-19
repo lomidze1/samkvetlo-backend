@@ -1,0 +1,24 @@
+version: 2
+updates:
+  # ADR 0014 §8 (T5.11): dependency graph + Dependabot alerts are already on
+  # for the repo; this file adds the weekly version-update PRs. `payload`
+  # and `next` majors/minors are reviewed by hand — nothing here auto-merges
+  # them (no auto-merge workflow exists in this repo).
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    groups:
+      payload:
+        patterns:
+          - 'payload'
+          - '@payloadcms/*'
+      next:
+        patterns:
+          - 'next'
+          - 'eslint-config-next'
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'

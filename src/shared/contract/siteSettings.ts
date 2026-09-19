@@ -11,5 +11,15 @@ export const PublicSiteSettingsSchema = z.strictObject({
   // ADR 0010 / T2.3: gates the home page configurator teaser. Off by
   // default until the foundry confirms the bell SVG.
   configuratorEnabled: z.boolean(),
+  // T5.x SEO contract: structured LocalBusiness address. `null` unless the
+  // owner opted in (site-settings.store.publishAddress) AND both required
+  // fields are non-empty — never derived from the free-text `address`.
+  store: z
+    .strictObject({
+      streetAddress: z.string(),
+      addressLocality: z.string(),
+      postalCode: z.string().nullable(),
+    })
+    .nullable(),
 })
 export type PublicSiteSettings = z.infer<typeof PublicSiteSettingsSchema>

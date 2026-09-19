@@ -60,6 +60,20 @@ export class PublicHttpError extends Error {
 }
 
 /**
+ * Code review finding: thrown by a handler to produce a 400 with an error
+ * code (e.g. a zod parse failure on query params) — publicEndpoint catches
+ * it. Distinct from PublicNotFoundError: a malformed request (unknown
+ * `type`, missing `path`, ...) is a client error, not "no such resource".
+ */
+export class PublicBadRequestError extends Error {
+  readonly code: string
+  constructor(code = 'err.validation') {
+    super(code)
+    this.code = code
+  }
+}
+
+/**
  * Builds the `fields` map for a zod validation failure — keyed by the
  * top-level field name, valued by the issue's own message. Every OrderInput
  * field's message is one of exactly 'required' | 'tooLong' | 'invalid'
@@ -130,6 +144,9 @@ export function publicEndpoint<Output extends ZodType, Input extends ZodType | u
         }
         if (err instanceof PublicHttpError) {
           return errorResponse(err.code, err.status, err.fields)
+        }
+        if (err instanceof PublicBadRequestError) {
+          return errorResponse(err.code, 400)
         }
         throw err
       }

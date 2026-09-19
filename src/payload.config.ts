@@ -22,6 +22,7 @@ import { Pages } from './collections/Pages'
 import { DeliveryZones } from './collections/DeliveryZones'
 import { CustomRequests } from './collections/CustomRequests'
 import { ShareLinks } from './collections/ShareLinks'
+import { AuditEvents } from './collections/AuditEvents'
 import { PricingSettings } from './globals/PricingSettings'
 import { SiteSettings } from './globals/SiteSettings'
 import { healthEndpoint } from './endpoints/public/health'
@@ -40,6 +41,8 @@ import {
   shareLinkRevokeEndpoint,
   shareByTokenEndpoint,
 } from './endpoints/public/shareLinks'
+import { sitemapEndpoint } from './endpoints/public/sitemap'
+import { redirectEndpoint } from './endpoints/public/redirect'
 import { cronRatesEndpoint } from './endpoints/cronRates'
 
 const filename = fileURLToPath(import.meta.url)
@@ -120,11 +123,15 @@ export default buildConfig({
     DeliveryZones,
     CustomRequests,
     ShareLinks,
+    AuditEvents,
   ],
   globals: [PricingSettings, SiteSettings],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   serverURL: process.env.BACKEND_URL,
+  // ADR 0014 §4: default is 10 — narrowed so a relationship/upload field
+  // can't accidentally pull in several extra hops of populated documents.
+  maxDepth: 3,
   cors: [],
   csrf: [process.env.BACKEND_URL].filter((value): value is string => Boolean(value)),
   endpoints: [
@@ -144,6 +151,8 @@ export default buildConfig({
     shareLinkCreateEndpoint,
     shareLinkRevokeEndpoint,
     shareByTokenEndpoint,
+    sitemapEndpoint,
+    redirectEndpoint,
     cronRatesEndpoint,
   ],
   graphQL: {

@@ -57,7 +57,7 @@ async function createAdmin() {
   counter += 1
   const admin = await payload.create({
     collection: 'users',
-    data: { email: `cart-quote-admin-${counter}@samkvetlo.local`, password: 'test-password' },
+    data: { email: `cart-quote-admin-${counter}@samkvetlo.local`, password: 'test-password-16' },
   })
   userIds.push(admin.id)
   return admin

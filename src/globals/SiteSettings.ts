@@ -73,5 +73,20 @@ export const SiteSettings: GlobalConfig = {
       min: 1,
       access: { read: isAdminField },
     },
+    // T5.x SEO contract: LocalBusiness JSON-LD needs a structured address,
+    // separate from the free-text `address` above — kept off by default
+    // (`publishAddress`) since the owner may not want the street address
+    // public even once it's on file.
+    {
+      name: 'store',
+      type: 'group',
+      label: 'მაღაზიის მისამართი (LocalBusiness SEO)',
+      fields: [
+        { name: 'publishAddress', type: 'checkbox', label: 'საჯაროდ გამოქვეყნება', defaultValue: false },
+        { name: 'streetAddress', type: 'text', label: 'ქუჩა და ნომერი' },
+        { name: 'addressLocality', type: 'text', label: 'ქალაქი' },
+        { name: 'postalCode', type: 'text', label: 'საფოსტო ინდექსი' },
+      ],
+    },
   ],
 }

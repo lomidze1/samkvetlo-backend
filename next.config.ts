@@ -1,4 +1,5 @@
 import { withPayload } from '@payloadcms/next/withPayload'
+import { withSentryConfig } from '@sentry/nextjs/config'
 import type { NextConfig } from 'next'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -9,6 +10,17 @@ const dirname = path.dirname(__filename)
 const nextConfig: NextConfig = {
   async redirects() {
     return [{ source: '/', destination: '/admin', permanent: false }]
+  },
+  // T5.x SEO contract: nothing on this backend (admin, built-in REST,
+  // /api/public/*) should ever be indexed — the storefront (samkvetlo) is
+  // the only origin search engines should see.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }],
+      },
+    ]
   },
   webpack: (webpackConfig) => {
     webpackConfig.resolve.extensionAlias = {
@@ -24,4 +36,17 @@ const nextConfig: NextConfig = {
   },
 }
 
-export default withPayload(nextConfig, { devBundleServerPackages: false })
+// T5.10 (ADR 0014 §11): source maps only upload when a CI-provided auth
+// token exists — a missing one (every env until the owner creates one)
+// must not fail the build, just skip the upload silently. No `tunnelRoute`
+// (chief-architect, T5.10): this is an internal admin tool, not a
+// public page behind an ad blocker.
+export default withSentryConfig(withPayload(nextConfig, { devBundleServerPackages: false }), {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: true,
+  sourcemaps: {
+    disable: !process.env.SENTRY_AUTH_TOKEN,
+  },
+})
