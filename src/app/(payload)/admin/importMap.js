@@ -27,6 +27,7 @@ import { FailedNotificationsWarning as FailedNotificationsWarning_5522d7f0538943
 import { OrderItemRowLabel as OrderItemRowLabel_2a0c3adbeb47d6225a83ab4e61d1a813 } from '../../../components/admin/OrderItemRowLabel'
 import { PConfirmedBanner as PConfirmedBanner_fcd440934340203fad7f38d8126e1129 } from '../../../components/admin/PConfirmedBanner'
 import { S3ClientUploadHandler as S3ClientUploadHandler_f97aa6c64367fa259c5bc0567239ef24 } from '@payloadcms/storage-s3/client'
+import { TotpLoginView as TotpLoginView_519e2eafd9021128a9c783c739343e00 } from '../../../components/admin/TotpLogin/TotpLoginView'
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from '@payloadcms/next/rsc'
 
 /** @type import('payload').ImportMap */
@@ -60,5 +61,6 @@ export const importMap = {
   "/components/admin/OrderItemRowLabel#OrderItemRowLabel": OrderItemRowLabel_2a0c3adbeb47d6225a83ab4e61d1a813,
   "/components/admin/PConfirmedBanner#PConfirmedBanner": PConfirmedBanner_fcd440934340203fad7f38d8126e1129,
   "@payloadcms/storage-s3/client#S3ClientUploadHandler": S3ClientUploadHandler_f97aa6c64367fa259c5bc0567239ef24,
+  "/components/admin/TotpLogin/TotpLoginView#TotpLoginView": TotpLoginView_519e2eafd9021128a9c783c739343e00,
   "@payloadcms/next/rsc#CollectionCards": CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1
 }

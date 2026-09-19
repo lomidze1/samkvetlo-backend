@@ -1,8 +1,10 @@
 import type { CollectionConfig } from 'payload'
 
 import { isAdmin } from '../access/isAdmin'
+import { isAdminField } from '../access/isAdminField'
 import { auditLogin } from './hooks/loginAudit'
 import { enforcePasswordMinLength } from './hooks/passwordPolicy'
+import { requireTotp } from './hooks/requireTotp'
 
 export const Users: CollectionConfig = {
   slug: 'users',
@@ -28,13 +30,41 @@ export const Users: CollectionConfig = {
   },
   hooks: {
     beforeValidate: [enforcePasswordMinLength],
-    // ADR 0014 §4 fallback: audits every successful login, not just
-    // break-glass ones (a stolen password used from inside Georgia is
-    // otherwise silent). Emails the owners only on break-glass (ADR 0016).
+    // ADR 0018 (T5.17): 2FA gate — closes the T5.9 spike's hole (a user
+    // with no TOTP secret used to reach admin-only data with just the
+    // password). Runs before jwtSign, in the same request/transaction as
+    // the password; also covers resetPassword and registerFirstUser,
+    // which call the same login operation.
+    beforeLogin: [requireTotp],
+    // Audits every successful login, not just break-glass ones (a stolen
+    // password used from inside Georgia is otherwise silent). Emails the
+    // owners only on break-glass (ADR 0016).
     afterLogin: [auditLogin],
   },
   fields: [
     // Email added by default
-    // Add more fields as needed
+    // ADR 0018 §1: never exposed over the API (login response, GET
+    // /api/users/:id, /me, JWT payload) or the admin UI — written only by
+    // the CLI (scripts/admin-totp.ts) and requireTotp.ts, both via Local
+    // API + overrideAccess: true.
+    {
+      name: 'totpSecret',
+      type: 'text',
+      admin: { hidden: true },
+      access: { read: () => false, create: () => false, update: () => false },
+    },
+    {
+      name: 'totpLastStep',
+      type: 'number',
+      admin: { hidden: true },
+      access: { read: () => false, create: () => false, update: () => false },
+    },
+    {
+      name: 'totpEnabledAt',
+      type: 'date',
+      label: '2FA ჩართულია',
+      admin: { readOnly: true, position: 'sidebar' },
+      access: { read: isAdminField, create: () => false, update: () => false },
+    },
   ],
 }

@@ -14,6 +14,7 @@ import config from '../src/payload.config'
 import { recomputeProductPricing } from '../src/collections/hooks/variantPricing'
 import { slugify } from '../src/lib/translit'
 import { SENTINEL } from '../tests/fixtures/sentinel'
+import { buildOtpauthUri, generateTotpSecret } from '../src/server/security/totp'
 
 // Dev-only placeholder — never a real number. The owner replaces this in the
 // admin (site-settings.phone); seeding only needs a non-empty value so the
@@ -70,6 +71,27 @@ async function createPlaceholderMedia(payload: Payload, alt: string): Promise<nu
 // ---------------------------------------------------------------------------
 // Small idempotent upsert helpers
 // ---------------------------------------------------------------------------
+// ADR 0018 §4 (T5.17): the seeded dev admin also needs a TOTP secret, or
+// every seed-driven local login is fail-closed (requireTotp.ts). Reuses
+// SEED_ADMIN_TOTP_SECRET if set (a stable value for repeatable local/CI
+// runs), otherwise generates and prints a fresh one — same shape as
+// scripts/admin-totp.ts's own enrollment.
+async function ensureAdminTotp(payload: Payload, email: string, userId: number | string): Promise<void> {
+  const secret = process.env.SEED_ADMIN_TOTP_SECRET || generateTotpSecret()
+  await payload.update({
+    collection: 'users',
+    id: userId,
+    data: { totpSecret: secret, totpLastStep: null, totpEnabledAt: new Date().toISOString() },
+    overrideAccess: true,
+    context: SEED_CONTEXT,
+  })
+  if (!process.env.SEED_ADMIN_TOTP_SECRET) {
+    console.log(`seed: generated a TOTP secret for ${email} (add SEED_ADMIN_TOTP_SECRET to .env to keep it stable):`)
+    console.log(`  URI:    ${buildOtpauthUri(secret, email)}`)
+    console.log(`  Secret: ${secret}`)
+  }
+}
+
 async function ensureAdmin(payload: Payload): Promise<void> {
   const email = process.env.SEED_ADMIN_EMAIL
   const password = process.env.SEED_ADMIN_PASSWORD
@@ -83,8 +105,12 @@ async function ensureAdmin(payload: Payload): Promise<void> {
     limit: 1,
     overrideAccess: true,
   })
-  if (docs[0]) return
-  await payload.create({ collection: 'users', data: { email, password }, overrideAccess: true })
+  if (docs[0]) {
+    if (!docs[0].totpSecret) await ensureAdminTotp(payload, email, docs[0].id)
+    return
+  }
+  const user = await payload.create({ collection: 'users', data: { email, password }, overrideAccess: true })
+  await ensureAdminTotp(payload, email, user.id)
 }
 
 /**

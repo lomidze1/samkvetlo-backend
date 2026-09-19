@@ -5,10 +5,11 @@ import { ka } from '../../i18n/ka'
 import { getEmailSender } from '../../server/notify'
 
 /**
- * ADR 0014 §4 fallback (TOTP spike failed — T5.9/docs/spikes/totp-spike.md
- * — 2FA is deferred past launch): geo + lockout + long passwords have one
- * blind spot — a stolen password used from *inside* Georgia produces zero
- * signal. So every successful login is audited, not just break-glass ones:
+ * ADR 0014 §4 / ADR 0018 (T5.17: TOTP is now in place, on top of this):
+ * geo + lockout + long passwords + TOTP still have one blind spot — a
+ * stolen password *and* a stolen/replayed TOTP code used from *inside*
+ * Georgia produces zero signal on their own. So every successful login is
+ * audited, not just break-glass ones:
  * `login.success` (silent) or `login.break-glass` (also emails the owners,
  * ADR 0016/T5.14 — proxy.ts only let a non-GE request through because
  * break-glass applied).

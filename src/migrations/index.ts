@@ -7,6 +7,7 @@ import * as migration_20260916_071643_phase5_seo_contract from './20260916_07164
 import * as migration_20260918_091811_phase5_audit_user_optional from './20260918_091811_phase5_audit_user_optional';
 import * as migration_20260918_111000_s3_prefix_columns from './20260918_111000_s3_prefix_columns';
 import * as migration_20260919_074420_pricing_min_markup_gel from './20260919_074420_pricing_min_markup_gel';
+import * as migration_20260919_080426_totp_admin_2fa from './20260919_080426_totp_admin_2fa';
 
 export const migrations = [
   {
@@ -53,5 +54,10 @@ export const migrations = [
     up: migration_20260919_074420_pricing_min_markup_gel.up,
     down: migration_20260919_074420_pricing_min_markup_gel.down,
     name: '20260919_074420_pricing_min_markup_gel',
+  },
+  {
+    up: migration_20260919_080426_totp_admin_2fa.up,
+    down: migration_20260919_080426_totp_admin_2fa.down,
+    name: '20260919_080426_totp_admin_2fa',
   },
 ];

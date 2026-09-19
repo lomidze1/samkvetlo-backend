@@ -163,6 +163,9 @@ export interface UserAuthOperations {
  */
 export interface User {
   id: number;
+  totpSecret?: string | null;
+  totpLastStep?: number | null;
+  totpEnabledAt?: string | null;
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -957,6 +960,9 @@ export interface PayloadMigration {
  * via the `definition` "users_select".
  */
 export interface UsersSelect<T extends boolean = true> {
+  totpSecret?: T;
+  totpLastStep?: T;
+  totpEnabledAt?: T;
   updatedAt?: T;
   createdAt?: T;
   email?: T;

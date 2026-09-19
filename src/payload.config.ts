@@ -104,6 +104,13 @@ export default buildConfig({
       // T1.4: "P% დაუდასტურებელია" banner, visible only while
       // pricing-settings.pConfirmed = false (ADR 0006).
       beforeDashboard: ['/components/admin/PConfirmedBanner#PConfirmedBanner'],
+      // ADR 0018 (T5.17): replaces the built-in login view with one that
+      // also submits a TOTP code, in the same request as the password.
+      views: {
+        login: {
+          Component: '/components/admin/TotpLogin/TotpLoginView#TotpLoginView',
+        },
+      },
     },
   },
   collections: [

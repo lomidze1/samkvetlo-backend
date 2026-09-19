@@ -69,6 +69,17 @@ export const ka = {
         `${email} შევიდა ადმინში საქართველოს გარეთ (ქვეყანა: ${country}) break-glass გამონაკლისით.\n\n` +
         'თუ ეს თქვენ ან თქვენი პარტნიორი იყავით, დამატებითი მოქმედება არ სჭირდება — გამონაკლისს ვადა თავისთავად ეწურება.\n' +
         'თუ ეს არც ერთმა თქვენგანმა არ იცის, დაუყოვნებლივ შეცვალეთ ორივე ანგარიშის პაროლი და გამორთეთ Vercel Firewall-ის break-glass წესი.',
+      // ADR 0018 (T5.17): the beforeLogin gate and its custom login view.
+      // One Georgian message for every rejection reason (missing code, no
+      // secret, throttled, wrong/expired/replayed code) — the reason
+      // itself only ever reaches the server log (requireTotp.ts), never
+      // the client.
+      totp: {
+        invalidCode: 'კოდი არასწორია ან ვადაგასულია',
+        loginEmailLabel: 'ელფოსტა',
+        loginPasswordLabel: 'პაროლი',
+        loginCodeLabel: 'ავთენტიფიკატორის კოდი',
+      },
     },
   },
 } as const

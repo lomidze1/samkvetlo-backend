@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test'
 import { expect } from '@playwright/test'
+import { currentTotpCode } from './totp.js'
 
 export interface LoginOptions {
   page: Page
@@ -7,6 +8,8 @@ export interface LoginOptions {
     email: string
     password: string
   }
+  /** ADR 0018 (T5.17): base32 TOTP secret — see tests/helpers/seedUser.ts's testUserTotpSecret. */
+  totpSecret: string
 }
 
 /**
@@ -14,11 +17,12 @@ export interface LoginOptions {
  * paths so it works against whatever `use.baseURL` playwright.config.ts is
  * pointed at (E2E_BACKEND_URL) instead of a hardcoded port.
  */
-export async function login({ page, user }: LoginOptions): Promise<void> {
+export async function login({ page, user, totpSecret }: LoginOptions): Promise<void> {
   await page.goto('/admin/login')
 
   await page.fill('#field-email', user.email)
   await page.fill('#field-password', user.password)
+  await page.fill('#field-totp', currentTotpCode(totpSecret))
   await page.click('button[type="submit"]')
 
   await page.waitForURL(/\/admin(\?.*)?$/)

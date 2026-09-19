@@ -12,6 +12,7 @@ import { REST_GET, REST_POST } from '@payloadcms/next/routes'
 import config from '@/payload.config'
 
 import { memoryEmailSender } from '@/server/notify/memoryAdapter'
+import { currentTotpCode, enrollTotp, resetTotpLastStep } from '../helpers/totp'
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -21,14 +22,24 @@ const EMAIL = 'break-glass-test@samkvetlo.local'
 const PASSWORD = 'break-glass-password-16'
 const OWNER_EMAIL = 'owner-break-glass@samkvetlo.local'
 
+let totpSecret: string
+let userId: number
+
+// ADR 0018 (T5.17): login now requires a TOTP code in the same request, so
+// this file's REST logins need one too. `resetTotpLastStep` is needed
+// because several tests in this file each log the same user in — without
+// it, the second call within the same 30 s step would be rejected as a
+// replay (a concern for totp.int.spec.ts, not this file's audit-trail
+// assertions).
 async function login(country: string | null): Promise<Response> {
+  await resetTotpLastStep(payload, userId)
   const handler = REST_POST(config)
   const headers = new Headers({ 'content-type': 'application/json' })
   if (country) headers.set('x-vercel-ip-country', country)
   const request = new Request('http://localhost:3001/api/users/login', {
     method: 'POST',
     headers,
-    body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
+    body: JSON.stringify({ email: EMAIL, password: PASSWORD, totp: currentTotpCode(totpSecret) }),
   })
   return handler(request, { params: Promise.resolve({ slug: ['users', 'login'] }) })
 }
@@ -44,8 +55,6 @@ async function auditEventsForUser(userId: number | string): Promise<number> {
 }
 
 describe('audit-events (ADR 0014 §4 fallback, ADR 0016, T5.14)', () => {
-  let userId: number
-
   beforeAll(async () => {
     payload = await getPayload({ config: await config })
     process.env.EMAIL_ADAPTER = 'memory'
@@ -62,6 +71,7 @@ describe('audit-events (ADR 0014 §4 fallback, ADR 0016, T5.14)', () => {
       overrideAccess: true,
     })
     userId = user.id
+    totpSecret = await enrollTotp(payload, userId)
   })
 
   afterEach(async () => {
@@ -220,12 +230,13 @@ describe('audit-events (ADR 0014 §4 fallback, ADR 0016, T5.14)', () => {
       data: { email, password: PASSWORD },
       overrideAccess: true,
     })
+    const doomedSecret = await enrollTotp(payload, doomed.id)
     const handler = REST_POST(config)
     const response = await handler(
       new Request('http://localhost:3001/api/users/login', {
         method: 'POST',
         headers: new Headers({ 'content-type': 'application/json' }),
-        body: JSON.stringify({ email, password: PASSWORD }),
+        body: JSON.stringify({ email, password: PASSWORD, totp: currentTotpCode(doomedSecret) }),
       }),
       { params: Promise.resolve({ slug: ['users', 'login'] }) },
     )
