@@ -40,9 +40,11 @@ DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5433/samkvetlo_fresh_test PA
 pnpm check:migrations  # config-ის სქემა == migration-ების სქემა (ცალკე DB არ სჭირდება)
 DATABASE_URL=.../samkvetlo_fresh pnpm seed   # ბაზისური/სატესტო მონაცემები
 DATABASE_URL_TEST=.../samkvetlo_fresh_test PAYLOAD_DB_PUSH=false pnpm test:int   # push drift-ს აღარ ფარავს
-DATABASE_URL=.../samkvetlo_fresh PAYLOAD_DB_PUSH=false pnpm exec next dev -p 3021 &   # e2e-სთვის
+DATABASE_URL=.../samkvetlo_fresh BACKEND_URL=http://localhost:3021 PAYLOAD_DB_PUSH=false pnpm exec next dev -p 3021 &   # e2e-სთვის
 pnpm test:e2e   # ამ backend-ზე; frontend-იდან იგივეს E2E_BACKEND_URL-ით
 ```
+
+**`BACKEND_URL` სავალდებულოა პორტის შეცვლისას** (`.env`-ში default 3001-ია): Payload-ის `csrf` allowlist `BACKEND_URL`-იდან იგება (`src/payload.config.ts`), ასე რომ GET-ები 3021-ზეც იმუშავებს, მაგრამ ადმინის ნებისმიერი შენახვა (PATCH/POST/DELETE) დადუმებული 403-ით ჩავარდება — access function-ები ტესტში `true`-ს აბრუნებენ, ამიტომ ეს არ ჰგავს auth-ის პრობლემას (M9-ის დებაგზე ნაპოვნი, M8-ში დადასტურებული).
 
 ## შეტყობინებები prod-ში (T5.18, ADR 0019, B3)
 
