@@ -1506,7 +1506,7 @@ export interface PricingSetting {
         id?: string | null;
       }[]
     | null;
-  minMarkupUsd: number;
+  minMarkupGel: number;
   maxMarkupUsd: number;
   roundingStepGel: number;
   defaultBankFeePct: number;
@@ -1574,7 +1574,7 @@ export interface PricingSettingsSelect<T extends boolean = true> {
         pPercent?: T;
         id?: T;
       };
-  minMarkupUsd?: T;
+  minMarkupGel?: T;
   maxMarkupUsd?: T;
   roundingStepGel?: T;
   defaultBankFeePct?: T;

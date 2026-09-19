@@ -2,14 +2,15 @@ import { describe, expect, it } from 'vitest'
 
 import { computePricing, type PricingFormulaInput } from '@/lib/pricing/formula'
 
-// ADR 0006: test vectors. usdGel = 2.6095, P = 30, step = 10, fee = buffer = 0
-// (so costGel === the given C directly, since base === C).
+// ADR 0006: test vectors (2026-09-19: minMarkupGel = 1500, fixed GEL, owner
+// decision — replaces minMarkupUsd = 1000). usdGel = 2.6095, P = 30, step =
+// 10, fee = buffer = 0 (so costGel === the given C directly, since base === C).
 const BASE_INPUT: Omit<PricingFormulaInput, 'costRub' | 'rubGel' | 'logisticsGel' | 'otherCostsGel'> = {
   bankFeePct: 0,
   bufferPct: 0,
   pPercent: 30,
   usdGel: 2.6095,
-  minMarkupUsd: 1000,
+  minMarkupGel: 1500,
   maxMarkupUsd: 2500,
   roundingStepGel: 10,
   thresholdYellowPct: 100,
@@ -24,9 +25,9 @@ function withC(costGel: number): PricingFormulaInput {
 
 describe('computePricing (T1.4, ADR 0006 test vectors)', () => {
   it.each([
-    [1_000, 3_610, 261, 'red'],
-    [2_000, 4_610, 130, 'yellow'],
-    [5_000, 7_610, 52, 'green'],
+    [1_000, 2_500, 150, 'yellow'],
+    [2_000, 3_500, 75, 'green'],
+    [5_000, 6_500, 30, 'green'],
     [12_000, 15_600, 30, 'green'],
     [40_000, 46_520, 16, 'green'],
   ] as const)('C = %d -> suggested %d, share ~%d%%, %s', (costGel, suggested, sharePct, indicator) => {
@@ -48,9 +49,9 @@ describe('computePricing (T1.4, ADR 0006 test vectors)', () => {
     })
     expect(result.base).toBeCloseTo(4_574.605, 3)
     expect(result.costGel).toBeCloseTo(4_849.08, 2)
-    expect(result.markupGel).toBeCloseTo(2_609.5, 1)
-    expect(result.suggestedPriceGel).toBe(7_460)
-    expect(result.markupSharePct).toBeCloseTo(53.8, 1)
+    expect(result.markupGel).toBeCloseTo(1_500, 1)
+    expect(result.suggestedPriceGel).toBe(6_350)
+    expect(result.markupSharePct).toBeCloseTo(30.9, 1)
     expect(result.indicator).toBe('green')
   })
 })

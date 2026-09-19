@@ -70,7 +70,7 @@ export const computeCostingFields: CollectionBeforeChangeHook = async ({ data, r
     bufferPct,
     pPercent: pUsed,
     usdGel: latestRate.usdGel,
-    minMarkupUsd: settings.minMarkupUsd,
+    minMarkupGel: settings.minMarkupGel,
     maxMarkupUsd: settings.maxMarkupUsd,
     roundingStepGel: settings.roundingStepGel,
     thresholdYellowPct: settings.thresholdYellowPct,

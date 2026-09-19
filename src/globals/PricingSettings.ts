@@ -36,7 +36,14 @@ export const PricingSettings: GlobalConfig = {
         { name: 'pPercent', type: 'number', required: true, label: 'P%', min: 0 },
       ],
     },
-    { name: 'minMarkupUsd', type: 'number', required: true, label: 'მინ. ფასნამატი ($)', defaultValue: 1000 },
+    {
+      // 2026-09-19: owner decision — fixed GEL floor, replaces minMarkupUsd = 1000 (ADR 0006).
+      name: 'minMarkupGel',
+      type: 'number',
+      required: true,
+      label: 'მინ. ფასნამატი (₾)',
+      defaultValue: 1500,
+    },
     { name: 'maxMarkupUsd', type: 'number', required: true, label: 'მაქს. ფასნამატი ($)', defaultValue: 2500 },
     {
       // 2026-09-14: owner confirmed rounding to the nearest 10 ₾.

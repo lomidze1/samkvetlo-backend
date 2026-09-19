@@ -18,10 +18,10 @@ export interface PricingFormulaInput {
   bufferPct: number
   /** Markup percent (pricing-settings.pPercent, or a category override). */
   pPercent: number
-  /** USD -> GEL unit rate, for the markup floor/ceiling. */
+  /** USD -> GEL unit rate, for the markup ceiling. */
   usdGel: number
-  /** Markup floor, in USD. */
-  minMarkupUsd: number
+  /** Markup floor, in GEL (fixed amount — owner decision 2026-09-19, ADR 0006). */
+  minMarkupGel: number
   /** Markup ceiling, in USD. */
   maxMarkupUsd: number
   /** Rounding step for the suggested price, in GEL (half-up). */
@@ -37,7 +37,7 @@ export interface PricingFormulaResult {
   base: number
   /** base × (1 + (bankFeePct + bufferPct) / 100). */
   costGel: number
-  /** clamp(costGel × pPercent / 100, minMarkupUsd × usdGel, maxMarkupUsd × usdGel). */
+  /** clamp(costGel × pPercent / 100, minMarkupGel, maxMarkupUsd × usdGel). */
   markupGel: number
   /** round₍roundingStepGel₎(costGel + markupGel), half-up. */
   suggestedPriceGel: number
@@ -55,9 +55,8 @@ export function computePricing(input: PricingFormulaInput): PricingFormulaResult
   const costGel = base * (1 + (input.bankFeePct + input.bufferPct) / 100)
 
   const markupRaw = costGel * (input.pPercent / 100)
-  const minMarkupGel = input.minMarkupUsd * input.usdGel
   const maxMarkupGel = input.maxMarkupUsd * input.usdGel
-  const markupGel = Math.min(Math.max(markupRaw, minMarkupGel), maxMarkupGel)
+  const markupGel = Math.min(Math.max(markupRaw, input.minMarkupGel), maxMarkupGel)
 
   const suggestedPriceGel = roundHalfUpToStep(costGel + markupGel, input.roundingStepGel)
   const markupSharePct = (markupGel / costGel) * 100
