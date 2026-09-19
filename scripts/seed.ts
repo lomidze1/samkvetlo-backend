@@ -16,10 +16,12 @@ import { slugify } from '../src/lib/translit'
 import { SENTINEL } from '../tests/fixtures/sentinel'
 import { buildOtpauthUri, generateTotpSecret } from '../src/server/security/totp'
 
-// Dev-only placeholder — never a real number. The owner replaces this in the
-// admin (site-settings.phone); seeding only needs a non-empty value so the
-// header utility bar, call button and contact section have something to render.
+// Dev-only placeholders — never real numbers. The owner replaces these in
+// the admin (site-settings.phone/phoneSecondary, X2); seeding only needs
+// non-empty values so the header utility bar, call button and contact
+// section have something to render.
 const SEED_PLACEHOLDER_PHONE = '+995 555 00 00 00'
+const SEED_PLACEHOLDER_PHONE_SECONDARY = '+995 555 00 00 01'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const FIXTURES_DIR = path.resolve(dirname, '../tests/fixtures')
@@ -125,7 +127,7 @@ async function ensureSiteSettingsPhone(payload: Payload): Promise<void> {
   if (settings.phone) return
   await payload.updateGlobal({
     slug: 'site-settings',
-    data: { phone: SEED_PLACEHOLDER_PHONE },
+    data: { phone: SEED_PLACEHOLDER_PHONE, phoneSecondary: SEED_PLACEHOLDER_PHONE_SECONDARY },
     overrideAccess: true,
     context: SEED_CONTEXT,
   })
@@ -533,26 +535,29 @@ interface ZoneSeed {
   feeGel: number
   sortOrder: number
   examples?: string
+  // Only the default zone needs this: `guardTbilisiUpdate`/`guardTbilisiDelete`
+  // (deliveryZoneGuard.ts) match on the literal slug `tbilisi`, which no
+  // longer falls out of `slugify(name)` now that the name is "თბილისი და
+  // 150 კმ-მდე". Every other zone keeps the auto-derived slug.
+  slug?: string
 }
 
-// _doc/design/pages.md §8 — placeholder regions, ⏳ owner confirmation.
+// ADR 0015, owner decision 2026-09-18: distance from Tbilisi, not region —
+// up to 150 km is free, 150–250 km is +150 ₾, beyond that +250 ₾.
 const DELIVERY_ZONES: ZoneSeed[] = [
-  { name: 'თბილისი', feeGel: 0, sortOrder: 0 },
-  { name: 'აჭარა', feeGel: 200, sortOrder: 10, examples: 'ბათუმი, ქობულეთი' },
-  { name: 'გურია', feeGel: 200, sortOrder: 20, examples: 'ოზურგეთი' },
-  { name: 'იმერეთი', feeGel: 200, sortOrder: 30, examples: 'ქუთაისი, ზესტაფონი' },
-  { name: 'კახეთი', feeGel: 200, sortOrder: 40, examples: 'თელავი, სიღნაღი, გურჯაანი' },
-  { name: 'მცხეთა-მთიანეთი', feeGel: 200, sortOrder: 50, examples: 'მცხეთა, დუშეთი' },
-  { name: 'ქვემო ქართლი', feeGel: 200, sortOrder: 60, examples: 'რუსთავი, მარნეული' },
-  { name: 'რაჭა-ლეჩხუმი და ქვემო სვანეთი', feeGel: 200, sortOrder: 70, examples: 'ამბროლაური' },
-  { name: 'სამეგრელო-ზემო სვანეთი', feeGel: 200, sortOrder: 80, examples: 'ზუგდიდი, ფოთი, მესტია' },
-  { name: 'სამცხე-ჯავახეთი', feeGel: 200, sortOrder: 90, examples: 'ახალციხე, ბორჯომი' },
-  { name: 'შიდა ქართლი', feeGel: 200, sortOrder: 100, examples: 'გორი, ხაშური' },
+  { name: 'თბილისი და 150 კმ-მდე', slug: 'tbilisi', feeGel: 0, sortOrder: 0, examples: 'რუსთავი, მცხეთა, გორი, თელავი' },
+  {
+    name: '150–250 კმ',
+    feeGel: 150,
+    sortOrder: 10,
+    examples: 'ქუთაისი, ზესტაფონი, ახალციხე, ბორჯომი, ლაგოდეხი, სტეფანწმინდა',
+  },
+  { name: '250 კმ-ზე მეტი', feeGel: 250, sortOrder: 20, examples: 'ბათუმი, ზუგდიდი, ფოთი, ოზურგეთი, მესტია' },
 ]
 
 async function seedDeliveryZones(payload: Payload): Promise<void> {
   for (const zone of DELIVERY_ZONES) {
-    const slug = slugify(zone.name)
+    const slug = zone.slug ?? slugify(zone.name)
     const { docs } = await payload.find({
       collection: 'delivery-zones',
       where: { slug: { equals: slug } },
@@ -739,10 +744,11 @@ export async function teardownSeed(payload: Payload): Promise<void> {
     .catch(() => undefined)
 
   for (const zone of DELIVERY_ZONES) {
-    if (zone.name === 'თბილისი') continue
+    const slug = zone.slug ?? slugify(zone.name)
+    if (slug === 'tbilisi') continue // guardTbilisiDelete forbids it anyway (ADR 0015 §1)
     const { docs } = await payload.find({
       collection: 'delivery-zones',
-      where: { slug: { equals: slugify(zone.name) } },
+      where: { slug: { equals: slug } },
       limit: 1,
       overrideAccess: true,
     })

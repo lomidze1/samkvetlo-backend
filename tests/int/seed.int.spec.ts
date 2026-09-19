@@ -32,8 +32,8 @@ describe('pnpm seed is idempotent (T1.10/T1.13)', () => {
 
     expect(zonesAfter.totalDocs).toBe(zonesBefore.totalDocs)
     expect(productsAfter.totalDocs).toBe(productsBefore.totalDocs)
-    // 1 + 10 regions (_doc/design/pages.md §8).
-    expect(zonesAfter.totalDocs).toBe(11)
+    // ADR 0015, owner decision 2026-09-18: 3 distance-based zones (0 / 150 / 250 ₾).
+    expect(zonesAfter.totalDocs).toBe(3)
   })
 
   it('seeds the default "tbilisi" zone at 0 ₾ / sortOrder 0', async () => {
