@@ -299,6 +299,109 @@ describe('requireTotp / admin 2FA (T5.17, ADR 0018)', () => {
     })
   })
 
+  // M2 (implementation-plan.md "MVP-მდე"): ADR 0018 addendum B — reserveTotpAttempt
+  // (beforeOperation, `operation: 'login'`) reserves against the 5/15min budget
+  // for *every* login attempt, including ones that fail on the password and
+  // never reach requireTotp/beforeLogin at all. These tests exercise that
+  // reservation through wrong *passwords* rather than wrong codes (already
+  // covered above) — the scenario the ADR's own trade-off note calls out.
+  describe('(M2) throttle counts every login attempt, incl. wrong passwords (ADR 0018 addendum B)', () => {
+    let secret: string
+
+    async function wrongPassword(email: string): Promise<Response> {
+      return restLogin({ email, password: 'definitely-not-the-password' })
+    }
+
+    beforeAll(async () => {
+      await payload.delete({ collection: 'users', where: { email: { equals: EMAIL } }, overrideAccess: true })
+      const user = await payload.create({ collection: 'users', data: { email: EMAIL, password: PASSWORD }, overrideAccess: true })
+      userId = user.id
+      secret = await enrollTotp(payload, userId)
+    })
+
+    it('(1) 3 wrong passwords, then the correct password + code -> 200 (still within the 5/15min budget)', async () => {
+      for (let i = 0; i < 3; i += 1) {
+        const response = await wrongPassword(EMAIL)
+        expect(response.status).toBe(401)
+      }
+
+      const response = await restLogin({ email: EMAIL, password: PASSWORD, totp: currentTotpCode(secret) })
+      expect(response.status).toBe(200)
+      const body = (await response.json()) as { token?: string }
+      expect(body.token).toBeTruthy()
+
+      // (3) a successful login resets the counter.
+      const reloaded = await payload.findByID({ collection: 'users', id: userId, overrideAccess: true })
+      expect(reloaded.totpFailCount).toBe(0)
+      expect(reloaded.totpFailWindowStart).toBeNull()
+    })
+
+    it('(2) 5 wrong passwords, then the correct password + code -> still 401; +15 min -> 200', async () => {
+      const throttleEmail = 'totp-wrongpw-throttle-test@samkvetlo.local'
+      await payload.delete({ collection: 'users', where: { email: { equals: throttleEmail } }, overrideAccess: true })
+      const throttleUser = await payload.create({
+        collection: 'users',
+        data: { email: throttleEmail, password: PASSWORD },
+        overrideAccess: true,
+      })
+      const throttleSecret = await enrollTotp(payload, throttleUser.id)
+
+      vi.useFakeTimers({ toFake: ['Date'] })
+      const start = new Date()
+      vi.setSystemTime(start)
+      try {
+        for (let i = 0; i < 5; i += 1) {
+          const response = await wrongPassword(throttleEmail)
+          expect(response.status).toBe(401)
+        }
+
+        // The 6th attempt of this window — this time with the *correct*
+        // password and a *valid* code — is still rejected: reserveTotpAttempt
+        // already counted the 5 wrong-password tries against the same budget.
+        const stillThrottled = await restLogin({
+          email: throttleEmail,
+          password: PASSWORD,
+          totp: currentTotpCode(throttleSecret),
+        })
+        expect(stillThrottled.status).toBe(401)
+
+        vi.setSystemTime(new Date(start.getTime() + 15 * 60 * 1000 + 1000))
+        const afterWindow = await restLogin({
+          email: throttleEmail,
+          password: PASSWORD,
+          totp: currentTotpCode(throttleSecret),
+        })
+        expect(afterWindow.status).toBe(200)
+      } finally {
+        vi.useRealTimers()
+        await payload.delete({ collection: 'audit-events', where: { user: { equals: throttleUser.id } }, overrideAccess: true })
+        await payload.delete({ collection: 'users', id: throttleUser.id, overrideAccess: true })
+      }
+    })
+
+    it('(4) a nonexistent email gets the same response as a wrong password, and changes nothing in `users`', async () => {
+      const unknownEmail = 'totp-does-not-exist@samkvetlo.local'
+      const usersBefore = await payload.find({ collection: 'users', overrideAccess: true, limit: 0 })
+
+      const wrongPasswordResponse = await wrongPassword(EMAIL)
+      const unknownEmailResponse = await restLogin({ email: unknownEmail, password: 'whatever-12345678' })
+
+      expect(unknownEmailResponse.status).toBe(wrongPasswordResponse.status)
+      const [wrongPasswordBody, unknownEmailBody] = await Promise.all([wrongPasswordResponse.json(), unknownEmailResponse.json()])
+      expect(unknownEmailBody).toEqual(wrongPasswordBody)
+
+      const usersAfter = await payload.find({ collection: 'users', overrideAccess: true, limit: 0 })
+      expect(usersAfter.totalDocs).toBe(usersBefore.totalDocs)
+
+      const stillNoSuchUser = await payload.find({
+        collection: 'users',
+        where: { email: { equals: unknownEmail } },
+        overrideAccess: true,
+      })
+      expect(stillNoSuchUser.totalDocs).toBe(0)
+    })
+  })
+
   describe('(7) totpSecret/totpLastStep never leave the API; an admin cannot set them by PATCH', () => {
     let secret: string
     let token: string
