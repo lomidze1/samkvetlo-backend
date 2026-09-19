@@ -84,6 +84,7 @@ export interface Config {
     'custom-requests': CustomRequest;
     'share-links': ShareLink;
     'audit-events': AuditEvent;
+    'short-links': ShortLink;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -112,6 +113,7 @@ export interface Config {
     'custom-requests': CustomRequestsSelect<false> | CustomRequestsSelect<true>;
     'share-links': ShareLinksSelect<false> | ShareLinksSelect<true>;
     'audit-events': AuditEventsSelect<false> | AuditEventsSelect<true>;
+    'short-links': ShortLinksSelect<false> | ShortLinksSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -825,6 +827,43 @@ export interface AuditEvent {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "short-links".
+ */
+export interface ShortLink {
+  id: number;
+  /**
+   * ბმული: samkvetlo.ge/go/{slug}. შექმნის შემდეგ ვერ შეიცვლება — შეცდომის შემთხვევაში წაშალე და თავიდან შექმენი.
+   */
+  slug: string;
+  /**
+   * შიდა გზა (მაგ. „/zarebi“) ან დაშვებული გარე საიტის https:// ბმული (Facebook, Instagram, YouTube, m.me, wa.me)
+   */
+  target: string;
+  /**
+   * მაგ. facebook, instagram, print, sms. მხოლოდ შიდა სამიზნეზე.
+   */
+  utmSource?: string | null;
+  /**
+   * მაგ. social, qr, banner. დაშვებულია მხოლოდ utm_source-თან ერთად.
+   */
+  utmMedium?: string | null;
+  /**
+   * ცარიელი — slug გამოიყენება ნაცვლად
+   */
+  utmCampaign?: string | null;
+  /**
+   * გამორთული ბმული მთავარ გვერდზე გადამისამართებს. წაშლის ნაცვლად გამორთე.
+   */
+  active?: boolean | null;
+  /**
+   * შიდა შენიშვნა (მაგ. „ბანერი ბათუმის ტაძართან, 2026-10“) — არასოდეს ჩანს საჯაროდ
+   */
+  note?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -914,6 +953,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'audit-events';
         value: number | AuditEvent;
+      } | null)
+    | ({
+        relationTo: 'short-links';
+        value: number | ShortLink;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -1458,6 +1501,21 @@ export interface AuditEventsSelect<T extends boolean = true> {
   user?: T;
   country?: T;
   at?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "short-links_select".
+ */
+export interface ShortLinksSelect<T extends boolean = true> {
+  slug?: T;
+  target?: T;
+  utmSource?: T;
+  utmMedium?: T;
+  utmCampaign?: T;
+  active?: T;
+  note?: T;
   updatedAt?: T;
   createdAt?: T;
 }

@@ -1,7 +1,7 @@
 import type { Payload } from 'payload'
 
 // ADR 0012 §5: the four coarse revalidation tags.
-export type RevalidateTag = 'catalog' | 'pages' | 'portfolio' | 'settings'
+export type RevalidateTag = 'catalog' | 'links' | 'pages' | 'portfolio' | 'settings'
 
 const TIMEOUT_MS = 3000
 

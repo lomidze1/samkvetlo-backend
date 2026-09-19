@@ -23,6 +23,7 @@ import { DeliveryZones } from './collections/DeliveryZones'
 import { CustomRequests } from './collections/CustomRequests'
 import { ShareLinks } from './collections/ShareLinks'
 import { AuditEvents } from './collections/AuditEvents'
+import { ShortLinks } from './collections/ShortLinks'
 import { PricingSettings } from './globals/PricingSettings'
 import { SiteSettings } from './globals/SiteSettings'
 import { healthEndpoint } from './endpoints/public/health'
@@ -43,6 +44,7 @@ import {
 } from './endpoints/public/shareLinks'
 import { sitemapEndpoint } from './endpoints/public/sitemap'
 import { redirectEndpoint } from './endpoints/public/redirect'
+import { shortLinksEndpoint } from './endpoints/public/shortLinks'
 import { cronRatesEndpoint } from './endpoints/cronRates'
 import { cronRetentionEndpoint } from './endpoints/cronRetention'
 
@@ -132,6 +134,7 @@ export default buildConfig({
     CustomRequests,
     ShareLinks,
     AuditEvents,
+    ShortLinks,
   ],
   globals: [PricingSettings, SiteSettings],
   editor: lexicalEditor(),
@@ -161,6 +164,7 @@ export default buildConfig({
     shareByTokenEndpoint,
     sitemapEndpoint,
     redirectEndpoint,
+    shortLinksEndpoint,
     cronRatesEndpoint,
     cronRetentionEndpoint,
   ],

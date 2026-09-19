@@ -23,6 +23,7 @@ export const PROTECTED_SLUGS = [
   's',
   'custom-request',
   'privacy',
+  'go',
 ] as const
 
 export const Categories: CollectionConfig = {
