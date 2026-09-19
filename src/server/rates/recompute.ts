@@ -1,4 +1,5 @@
 import type { Payload } from 'payload'
+import * as Sentry from '@sentry/nextjs'
 
 import { ka } from '../../i18n/ka'
 import { getEmailSender } from '../notify'
@@ -111,11 +112,25 @@ export async function recomputeCostingsForNewRate(payload: Payload): Promise<Rec
       .map((entry) => entry.email)
       .filter((email): email is string => Boolean(email))
     if (ownerEmails.length > 0) {
-      await getEmailSender().send({
-        to: ownerEmails,
-        subject: ka.server.pricing.needsReviewSubject,
-        text: reviewLines.join('\n'),
-      })
+      // ADR 0019 §7: prices are already written to needs-review above, so a
+      // real adapter failure here must not fail the cron/script that called
+      // us — log it and tell Sentry (name/code only, no PII) instead.
+      try {
+        await getEmailSender().send({
+          to: ownerEmails,
+          subject: ka.server.pricing.needsReviewSubject,
+          text: reviewLines.join('\n'),
+        })
+      } catch (err) {
+        const name = err instanceof Error ? err.name : 'Error'
+        const withCode = err as { code?: number | string }
+        const code = typeof withCode?.code === 'string' || typeof withCode?.code === 'number' ? withCode.code : undefined
+        payload.logger.error({ err }, 'notification failed: email')
+        Sentry.captureMessage('notification failed: email', {
+          level: 'warning',
+          extra: { channel: 'email', name, ...(code !== undefined ? { code } : {}) },
+        })
+      }
     }
   }
 

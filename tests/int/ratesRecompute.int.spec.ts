@@ -4,7 +4,13 @@ import config from '@/payload.config'
 import { memoryEmailSender } from '@/server/notify/memoryAdapter'
 import { recomputeCostingsForNewRate } from '@/server/rates/recompute'
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+
+// vi.mock is hoisted above the static imports above, so the factory can't
+// close over a plain top-level const (temporal dead zone) — vi.hoisted
+// gives it a binding that exists by the time the factory runs.
+const { captureMessage } = vi.hoisted(() => ({ captureMessage: vi.fn() }))
+vi.mock('@sentry/nextjs', () => ({ captureMessage }))
 
 let payload: Payload
 let counter = 0
@@ -98,6 +104,7 @@ describe('recomputeCostingsForNewRate (T1.6, ADR 0006)', () => {
   afterEach(() => {
     memoryEmailSender.reset()
     delete process.env.EMAIL_ADAPTER
+    captureMessage.mockClear()
   })
 
   it('a rate change past needsReviewPct marks the variant needs-review, keeps the site price, and sends one digest email', async () => {
@@ -202,6 +209,55 @@ describe('recomputeCostingsForNewRate (T1.6, ADR 0006)', () => {
       const updatedVariant = await payload.findByID({ collection: 'variants', id: variantId, depth: 0 })
       expect(updatedVariant.priceStatus).toBe('draft')
     } finally {
+      await cleanup(fixture)
+    }
+  })
+
+  // T5.18 (ADR 0019 §7): a real adapter failure must not fail the caller —
+  // prices are already written to needs-review by the time email is sent.
+  it('an email sender failure does not throw; needsReview/priceStatus are unaffected and Sentry gets name/code only', async () => {
+    process.env.EMAIL_ADAPTER = 'memory'
+    const providerError = Object.assign(new Error('ProviderError: rate_limit_exceeded (someone@example.com)'), {
+      name: 'ProviderError',
+      code: 'rate_limit_exceeded',
+    })
+    const sendSpy = vi.spyOn(memoryEmailSender, 'send').mockRejectedValueOnce(providerError)
+
+    const rate1 = await createRate(0.03, 7)
+    const { categoryId, productId, variantId } = await createProductWithVariant('კურსის-პროდუქტი-C')
+
+    const costing = await payload.create({
+      collection: 'costings',
+      data: { variant: variantId, costRub: 500_000, logisticsGel: 0, autoPricing: false },
+      overrideAccess: true,
+    })
+    const priceBefore = costing.suggestedPriceGel
+    await payload.update({
+      collection: 'variants',
+      id: variantId,
+      data: { price: priceBefore, priceStatus: 'approved' },
+      overrideAccess: true,
+    })
+
+    const rate2 = await createRate(0.06, 8)
+    const fixture: Fixture = { categoryId, productId, variantId, costingId: costing.id, rateIds: [rate1, rate2] }
+
+    try {
+      const result = await recomputeCostingsForNewRate(payload)
+      expect(result.needsReview).toBe(1)
+      expect(result.autoApplied).toBe(0)
+
+      const updatedVariant = await payload.findByID({ collection: 'variants', id: variantId, depth: 0 })
+      expect(updatedVariant.priceStatus).toBe('needs-review')
+      expect(updatedVariant.price).toBe(priceBefore)
+
+      expect(captureMessage).toHaveBeenCalledTimes(1)
+      const [message, args] = captureMessage.mock.calls[0]!
+      expect(message).toBe('notification failed: email')
+      expect(args).toEqual({ level: 'warning', extra: { channel: 'email', name: 'ProviderError', code: 'rate_limit_exceeded' } })
+      expect(JSON.stringify(args)).not.toContain('someone@example.com')
+    } finally {
+      sendSpy.mockRestore()
       await cleanup(fixture)
     }
   })

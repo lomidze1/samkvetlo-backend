@@ -32,6 +32,8 @@ export const ka = {
     // orderCreated.ts only calls these, it never writes Georgian itself
     // (check:ka scans src/server/**).
     notify: {
+      // ADR 0019 §4: default EMAIL_FROM_NAME when the env var is unset.
+      emailFromName: 'სამკვეთლო',
       orderCreated: {
         ownerEmailSubject: (number: string) => `ახალი შეკვეთა ${number}`,
         ownerEmailLine: (productTitle: string, variantTitle: string, qty: number, unitPriceText: string, lineTotalText: string) =>

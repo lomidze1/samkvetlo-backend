@@ -28,6 +28,10 @@ Payload CMS ადმინი + `/api/public/*` DTO API სამკვეთ�
 | `pnpm rates:sync` | ვალუტის კურსის სინქრონიზაცია (NBG) |
 | `pnpm admin:totp --email <e> [--create]` | ადმინის 2FA ჩართვა/როტაცია (ADR 0018) — [`docs/runbooks/admin-totp.md`](docs/runbooks/admin-totp.md) |
 
+## შეტყობინებები prod-ში (T5.18, ADR 0019, B3)
+
+`.env`-ში `EMAIL_ADAPTER=console`/`SMS_ADAPTER=console` (dev/staging) რჩება. Prod-ზე Vercel-ში დააყენე `EMAIL_ADAPTER=resend` (fallback `brevo`) და `SMS_ADAPTER=smsoffice` (fallback `senderge`) + შესაბამისი key/from-env `.env.example`-დან — ანგარიშების, key-ების და DNS-ის ჩამონათვალი: [`_doc/runbooks/first-deploy.md`](../_doc/runbooks/first-deploy.md) §1a. ორივე env დაუყენებლად production-ზე `NotifyConfigError('not_configured')` ↦ ⚠ ადმინში + Sentry.
+
 ## Prod ბაზა: როლები, backup, restore (T5.13, ADR 0014 §9–10)
 
 **როლები** (`docs/db-roles.sql`, idempotent): `samkvetlo_owner` (DDL, მხოლოდ `DATABASE_URL_MIGRATOR`-ით, `payload migrate`-ისთვის Vercel build-ში — იხ. `vercel.json`), `samkvetlo_app` (CRUD, runtime `DATABASE_URL`), `samkvetlo_backup` (მხოლოდ `SELECT`, ღამის dump-ისთვის). `samkvetlo_app`/`samkvetlo_backup`-ს DDL არ შეუძლია (`CREATE TABLE` → `permission denied for schema public`) — შემოწმებულია throwaway ბაზაზე, შედეგი T5.13-ის ანგარიშშია.
