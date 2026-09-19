@@ -97,19 +97,20 @@ async function main(): Promise<void> {
     collection: 'users',
     id: userId,
     // Code review finding: rotating the secret (lost phone, routine
-    // rotation) must also invalidate any session issued before the
-    // rotation — otherwise a still-valid cookie/JWT from before the
-    // rotation keeps working even though the authenticator entry that
-    // produced it no longer exists. totpFailCount/totpFailWindowStart are
-    // cleared too, so a rotation isn't immediately throttled by failures
-    // against the *old* secret.
+    // rotation) should also invalidate any session/cookie issued before
+    // the rotation. It can't here — `users` has no `sessions` column in
+    // any migrated database (see the migration's comment for the full
+    // story), so there's nothing to clear; a still-valid, unexpired
+    // cookie/JWT from before the rotation keeps working for up to
+    // tokenExpiration (2h) regardless. totpFailCount/totpFailWindowStart
+    // are still reset, so a rotation isn't immediately throttled by
+    // failures against the *old* secret.
     data: {
       totpSecret: secret,
       totpLastStep: null,
       totpEnabledAt: new Date().toISOString(),
       totpFailCount: 0,
       totpFailWindowStart: null,
-      sessions: [],
     },
     overrideAccess: true,
   })
