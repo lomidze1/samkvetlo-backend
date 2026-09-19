@@ -5,8 +5,9 @@ import { isAdminField } from '../access/isAdminField'
 import { auditLogin } from './hooks/loginAudit'
 import { enforcePasswordMinLength } from './hooks/passwordPolicy'
 import { requireTotp } from './hooks/requireTotp'
-import { flagPasswordChange, revokeSessionsOnPasswordChange } from './hooks/revokeOnPasswordChange'
-import { enforceSessionMaxAge } from './hooks/sessionMaxAge'
+import { reserveTotpAttempt } from './hooks/reserveTotpAttempt'
+import { flagPasswordChange, revokeSessionsOnPasswordChange, revokeSessionsOnPasswordReset } from './hooks/revokeOnPasswordChange'
+import { clampRefreshExpiry, enforceSessionMaxAge } from './hooks/sessionMaxAge'
 
 export const Users: CollectionConfig = {
   slug: 'users',
@@ -52,8 +53,21 @@ export const Users: CollectionConfig = {
     // self change) — flagPasswordChange (beforeValidate above) marks the
     // request via req.context.
     afterChange: [revokeSessionsOnPasswordChange],
-    // ADR 0018 addendum A: 12 h absolute session cap, checked on refresh.
-    beforeOperation: [enforceSessionMaxAge],
+    // Code review finding (ADR 0018 addendum A): `resetPassword` (the public
+    // forgot-password flow) writes the new password via `payload.db.updateOne`
+    // directly, bypassing afterChange above — this covers that path too. See
+    // revokeSessionsOnPasswordReset's comment.
+    afterOperation: [revokeSessionsOnPasswordReset],
+    // reserveTotpAttempt: code review finding on requireTotp's throttle —
+    // atomically reserves this login attempt (operation: 'login' only)
+    // before any transaction opens on the users row. enforceSessionMaxAge:
+    // ADR 0018 addendum A, 12 h absolute session cap, checked on refresh.
+    beforeOperation: [reserveTotpAttempt, enforceSessionMaxAge],
+    // Code review finding: a refresh late in the 12 h window used to still
+    // grant a full tokenExpiration (2 h), so the true max session lifetime
+    // was 12 h + that last token's 2 h = 14 h. clampRefreshExpiry shortens
+    // the refreshed token to end exactly at createdAt + 12 h instead.
+    refresh: [clampRefreshExpiry],
   },
   fields: [
     // Email added by default

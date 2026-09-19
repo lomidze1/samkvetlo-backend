@@ -9,7 +9,7 @@ import { REST_GET, REST_POST } from '@payloadcms/next/routes'
 import { sql } from '@payloadcms/db-postgres'
 import config from '@/payload.config'
 
-import { currentTotpCode, enrollTotp } from '../helpers/totp'
+import { currentTotpCode, enrollTotp, resetTotpLastStep } from '../helpers/totp'
 import { revokeUserSessions } from '@/server/security/sessions'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -186,6 +186,63 @@ describe('session revocation / absolute cap (T5.17a, ADR 0018 addendum A)', () =
     await backdateOnlySession(userA2.id, new Date(Date.now() - 11 * 60 * 60 * 1000))
     const refreshFresh = await restPost('/api/users/refresh-token', tokenFresh)
     expect(refreshFresh.status).toBe(200)
+  })
+
+  // Code review finding: resetPasswordOperation (the public forgot-password
+  // flow) writes the new password via `payload.db.updateOne` directly, so
+  // Users.hooks.afterChange (revokeSessionsOnPasswordChange) never runs for
+  // it — see revokeOnPasswordChange.ts's revokeSessionsOnPasswordReset
+  // comment for why `afterOperation` is used instead, and why this path is
+  // fully blocked today regardless (requireTotp.ts's beforeLogin gate also
+  // runs inside resetPasswordOperation). This test supplies a `totp` in the
+  // reset request's body — something a real reset-password form doesn't do
+  // today, but the REST endpoint accepts it exactly like login does — to
+  // exercise the one path where a reset actually succeeds, and confirms
+  // sessions get revoked exactly like a normal admin-initiated password
+  // change already does.
+  it('(6) resetting a password (with a valid code) revokes the account\'s other sessions and keeps the new one', async () => {
+    const userA = await createUser(EMAIL_A)
+    const staleToken = await loginAndGetToken(EMAIL_A, userA.secret)
+    expect(await sessionRowCount(userA.id)).toBe(1)
+
+    const resetToken = await payload.forgotPassword({
+      collection: 'users',
+      data: { email: EMAIL_A },
+      disableEmail: true,
+      overrideAccess: true,
+    })
+    expect(typeof resetToken).toBe('string')
+
+    // loginAndGetToken above already consumed this 30s step's code (replay
+    // guard) — clear it so the reset's own code isn't rejected as a replay.
+    await resetTotpLastStep(payload, userA.id)
+
+    const newPassword = 'sessions-test-reset-password-16'
+    const result = await payload.resetPassword({
+      collection: 'users',
+      data: { token: resetToken as string, password: newPassword },
+      overrideAccess: true,
+      req: { data: { totp: currentTotpCode(userA.secret) } } as never,
+    })
+    expect(result.token).toBeTruthy()
+
+    // The stale, pre-reset session is gone; exactly one (the reset's own
+    // new session) remains.
+    expect(await sessionRowCount(userA.id)).toBe(1)
+    const meStale = await restGet('/api/users/me', staleToken)
+    const meStaleBody = (await meStale.json()) as { user: unknown }
+    expect(meStaleBody.user).toBeNull()
+
+    const meNew = await restGet('/api/users/me', result.token!)
+    const meNewBody = (await meNew.json()) as { user: { email: string } | null }
+    expect(meNewBody.user?.email).toBe(EMAIL_A)
+
+    // The new password actually took effect. resetTotpLastStep: the reset
+    // itself already consumed this 30s step's code (replay guard), and a
+    // fast test run can land the next call in the very same step.
+    await resetTotpLastStep(payload, userA.id)
+    const loginWithNewPassword = await restLogin({ email: EMAIL_A, password: newPassword, totp: currentTotpCode(userA.secret) })
+    expect(loginWithNewPassword.status).toBe(200)
   })
 
   it('(7) deleting a user cascades its users_sessions rows', async () => {

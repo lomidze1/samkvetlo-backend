@@ -207,13 +207,13 @@ describe('requireTotp / admin 2FA (T5.17, ADR 0018)', () => {
     // Code review finding: the throttle counter used to be a live COUNT of
     // recent login.totp-failed rows, so concurrent requests could each read
     // the count before any of their own writes landed and all slip past
-    // the limit. users.totpFailCount is now an atomic `UPDATE ... SET
-    // count = count + 1` (see requireTotp.ts) — this asserts concurrent
-    // failures are never *lost* against each other (the count converges to
-    // the true number of attempts, not fewer), even though the decision
-    // each individual request makes is still based on the row it read at
-    // request start (see that comment for why that residual window can't
-    // be closed without a bigger change).
+    // the limit. users.totpFailCount is now reserved atomically *before*
+    // any transaction opens (reserveTotpAttempt.ts, `UPDATE ... RETURNING`)
+    // — this asserts concurrent attempts never lose an increment against
+    // each other (the count converges to the true number of attempts, not
+    // fewer). The test below this one asserts the *decision* itself (how
+    // many of a concurrent flood actually get to attempt verification) is
+    // now also correctly serialized, which this one alone doesn't prove.
     it('concurrent wrong-code attempts never lose an increment (atomic counter)', async () => {
       const concurrentEmail = 'totp-concurrent-test@samkvetlo.local'
       await payload.delete({ collection: 'users', where: { email: { equals: concurrentEmail } }, overrideAccess: true })
@@ -233,8 +233,11 @@ describe('requireTotp / admin 2FA (T5.17, ADR 0018)', () => {
           expect(response.status).toBe(401)
         }
 
-        // The fire-and-forget writes land shortly after each 401 — poll
-        // until the row settles instead of asserting immediately.
+        // reserveTotpAttempt's reservation is awaited inside beforeOperation,
+        // before the transaction even opens — by the time each restLogin
+        // call's promise resolves, its own increment has already landed. A
+        // short poll is kept anyway as a robustness margin, not because
+        // it's expected to actually loop.
         let finalCount: number | null | undefined
         for (let attempt = 0; attempt < 40; attempt += 1) {
           const reloaded = await payload.findByID({ collection: 'users', id: concurrentUser.id, overrideAccess: true })
@@ -246,6 +249,52 @@ describe('requireTotp / admin 2FA (T5.17, ADR 0018)', () => {
       } finally {
         await payload.delete({ collection: 'audit-events', where: { user: { equals: concurrentUser.id } }, overrideAccess: true })
         await payload.delete({ collection: 'users', id: concurrentUser.id, overrideAccess: true })
+      }
+    })
+
+    // Code review finding, the part the previous test alone doesn't prove:
+    // the *decision* each concurrent request makes (attempt it for real vs.
+    // reject as already-throttled) must itself be serialized, or a flood of
+    // simultaneous guesses could all read a pre-increment count and all get
+    // a real attempt against the algorithm regardless of the 5-attempt cap.
+    // reserveTotpAttempt.ts's `UPDATE ... RETURNING` closes exactly this —
+    // awaited, before any transaction/lock exists, so 10 concurrent
+    // requests for the same user serialize into reservations 1..10, and
+    // only the first 5 are ever told "allowed". Observable from outside
+    // reserveTotpAttempt/requireTotp: only an *allowed* attempt that then
+    // fails verification writes a `login.totp-failed` audit event (an
+    // already-throttled rejection deliberately doesn't, to avoid writing
+    // one per flood request) — so exactly 5 audit rows, out of 10
+    // concurrent wrong-code requests, is direct evidence the cap held under
+    // real concurrency, not just eventually-consistent counting.
+    it('a flood of concurrent wrong-code attempts is capped at exactly 5 real attempts (atomic reservation)', async () => {
+      const floodEmail = 'totp-flood-test@samkvetlo.local'
+      await payload.delete({ collection: 'users', where: { email: { equals: floodEmail } }, overrideAccess: true })
+      const floodUser = await payload.create({
+        collection: 'users',
+        data: { email: floodEmail, password: PASSWORD },
+        overrideAccess: true,
+      })
+      await enrollTotp(payload, floodUser.id)
+
+      try {
+        const attempts = 10
+        const responses = await Promise.all(
+          Array.from({ length: attempts }, () => restLogin({ email: floodEmail, password: PASSWORD, totp: '000000' })),
+        )
+        for (const response of responses) {
+          expect(response.status).toBe(401)
+        }
+
+        // Audit-event writes are still fire-and-forget (see requireTotp.ts) —
+        // poll for them to land, same as the other tests in this file.
+        expect(await waitForTotpFailureCount(floodUser.id, 5)).toBe(5)
+
+        const reloaded = await payload.findByID({ collection: 'users', id: floodUser.id, overrideAccess: true })
+        expect(reloaded.totpFailCount).toBe(attempts)
+      } finally {
+        await payload.delete({ collection: 'audit-events', where: { user: { equals: floodUser.id } }, overrideAccess: true })
+        await payload.delete({ collection: 'users', id: floodUser.id, overrideAccess: true })
       }
     })
   })

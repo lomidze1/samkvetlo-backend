@@ -3,6 +3,7 @@ import { sql } from '@payloadcms/db-postgres'
 
 import type { User } from '../../payload-types'
 import { ka } from '../../i18n/ka'
+import { TOTP_RESERVATION_CONTEXT_KEY, type TotpReservation } from './reserveTotpAttempt'
 import { verifyTotp } from '../../server/security/totp'
 
 const THROTTLE_WINDOW_MS_SQL = "interval '15 minutes'"
@@ -23,65 +24,70 @@ const THROTTLE_MAX_FAILURES = 5
  * replayed — throws the exact same Georgian message. The *reason* is only
  * ever visible in the server log, via the 401's cause.
  */
-export const requireTotp: CollectionBeforeLoginHook<User> = async ({ req, user }) => {
+export const requireTotp: CollectionBeforeLoginHook<User> = async ({ context, req, user }) => {
   const code = req.data?.totp
+
+  // Code review finding: reserveTotpAttempt.ts (Users.hooks.beforeOperation,
+  // `operation: 'login'`) already reserved this attempt — atomically, before
+  // any transaction opened on this row — and recorded on `req.context`
+  // whether it's within budget. See that file's comment for why the
+  // reservation has to happen there and not here, and why it's `login`-only:
+  // `resetPasswordOperation` calls `beforeOperation` *after* its own
+  // `initTransaction`, so the same "reserve before any lock exists" trick
+  // doesn't apply to it the same way. `requireTotp` also runs inside
+  // `resetPassword` (and `registerFirstUser`, which never reaches here with
+  // a totpSecret at all) — for those, `reservation` stays `undefined` and
+  // the block below falls back to this hook's *previous* behaviour (a
+  // stale, unlocked read plus a best-effort fire-and-forget increment):
+  // still racy under true concurrency, exactly as it was before this fix,
+  // not a regression — just not the part of the race this fix closes,
+  // since `resetPassword` already requires a valid, single-use emailed
+  // token to even reach here (ADR 0018 §2's "reset without a code is fully
+  // blocked" note; see tests/int/totp.int.spec.ts "(6)").
+  const reservation =
+    context[TOTP_RESERVATION_CONTEXT_KEY] as TotpReservation | undefined
+  const hasReservation = reservation?.userId === user.id
 
   const windowStart = user.totpFailWindowStart ? new Date(user.totpFailWindowStart) : null
   const windowActive = windowStart !== null && Date.now() - windowStart.getTime() < 15 * 60 * 1000
-  const failCountBeforeThisAttempt = windowActive ? (user.totpFailCount ?? 0) : 0
+  const staleFailCount = windowActive ? (user.totpFailCount ?? 0) : 0
+
+  const alreadyThrottled = hasReservation ? !reservation.allowed : staleFailCount >= THROTTLE_MAX_FAILURES
 
   const recordFailure = async (reason: string): Promise<never> => {
-    // Code review finding: this *must* run outside req's transaction, on a
-    // separate connection, same as the audit-events insert below and for
-    // the same reason (see that write's comment) — killTransaction rolls
-    // back everything written with `req` the moment this hook throws, so a
-    // `req`-scoped update here would never actually persist (confirmed:
-    // the first version of this fix used `req` and the counter silently
-    // stayed at 0 forever). It also can't be *awaited*: a separate
-    // connection's UPDATE against this same users row would queue behind
-    // the row lock addSessionToUser/resetLoginAttempts already hold in the
-    // still-open transaction, and awaiting it here would deadlock exactly
-    // like an awaited audit-events insert would.
-    //
-    // So: fire-and-forget, like the audit-events insert — but the
-    // increment itself is a single atomic `UPDATE ... SET count = count +
-    // 1` (computed entirely in SQL, including the window check against
-    // `now()`), not a JS read-modify-write. That makes concurrent
-    // increments for the same user never lose one another (each UPDATE
-    // fully serializes against the row, whichever order they land in) —
-    // the one race this can't close is the *decision* a given request
-    // makes from the `user` row it was handed at the very start (a plain
-    // SELECT, no lock): a flood of truly simultaneous requests can each
-    // still see the same pre-increment count before any of their own
-    // writes land. Payload's own maxLoginAttempts lockout (5 wrong
-    // *passwords* -> 15 min lock, Users.ts) bounds that further, since
-    // reaching this hook at all requires the correct password.
-    // payload's DatabaseAdapter type doesn't expose the underlying drizzle
-    // instance (that's specific to the Postgres adapter) — this mirrors
-    // exactly what a migration's { db } destructure already is (see
-    // src/migrations/*.ts), just reached via the adapter Payload wires up.
-    const drizzle = (req.payload.db as unknown as { drizzle: { execute: (query: unknown) => Promise<unknown> } }).drizzle
-    drizzle
-      .execute(
-        sql`
-          UPDATE "users"
-          SET
-            "totp_fail_count" = CASE
-              WHEN "totp_fail_window_start" IS NOT NULL AND now() - "totp_fail_window_start" < ${sql.raw(THROTTLE_WINDOW_MS_SQL)}
-                THEN COALESCE("totp_fail_count", 0) + 1
-              ELSE 1
-            END,
-            "totp_fail_window_start" = CASE
-              WHEN "totp_fail_window_start" IS NOT NULL AND now() - "totp_fail_window_start" < ${sql.raw(THROTTLE_WINDOW_MS_SQL)}
-                THEN "totp_fail_window_start"
-              ELSE now()
-            END
-          WHERE "id" = ${user.id}
-        `,
-      )
-      .catch((error: unknown) => {
-        req.payload.logger.error(error, 'requireTotp: failed to record a totp failure')
-      })
+    if (!hasReservation) {
+      // Fallback path only (see above) — the original atomic-but-racy
+      // increment, on a separate connection and *not* awaited: `req`'s own
+      // transaction rolls back everything written with `req` the moment
+      // this hook throws (confirmed: an earlier version used `req` and the
+      // counter silently stayed at 0 forever), and a separate connection's
+      // write to this same, already-locked-by-`req` row would deadlock if
+      // awaited (`addSessionToUser`/`resetLoginAttempts` already hold the
+      // lock by the time `beforeLogin` runs) — reproduced against real
+      // Postgres, same as the audit-events write below.
+      const drizzle = (req.payload.db as unknown as { drizzle: { execute: (query: unknown) => Promise<unknown> } }).drizzle
+      drizzle
+        .execute(
+          sql`
+            UPDATE "users"
+            SET
+              "totp_fail_count" = CASE
+                WHEN "totp_fail_window_start" IS NOT NULL AND now() - "totp_fail_window_start" < ${sql.raw(THROTTLE_WINDOW_MS_SQL)}
+                  THEN COALESCE("totp_fail_count", 0) + 1
+                ELSE 1
+              END,
+              "totp_fail_window_start" = CASE
+                WHEN "totp_fail_window_start" IS NOT NULL AND now() - "totp_fail_window_start" < ${sql.raw(THROTTLE_WINDOW_MS_SQL)}
+                  THEN "totp_fail_window_start"
+                ELSE now()
+              END
+            WHERE "id" = ${user.id}
+          `,
+        )
+        .catch((error: unknown) => {
+          req.payload.logger.error(error, 'requireTotp: failed to record a totp failure')
+        })
+    }
 
     // Written with the shared `payload` instance, *no* `req`, and — this
     // is the part the ADR's "outside the transaction" note didn't spell
@@ -97,11 +103,11 @@ export const requireTotp: CollectionBeforeLoginHook<User> = async ({ req, user }
     // block then does revokeSession + killTransaction (using the
     // *original* req/transaction, so that part never touches this new
     // transaction's lock wait), which releases the users-row lock this
-    // write (and the counter UPDATE above) is queued behind, and both
-    // complete right after — a genuine deadlock otherwise, confirmed by a
-    // minimal repro against Postgres, not just a theoretical concern. This
-    // write is informational only (admin visibility) — never the
-    // throttle's source of truth.
+    // write (and the counter UPDATE above, on the fallback path) is queued
+    // behind, and both complete right after — a genuine deadlock
+    // otherwise, confirmed by a minimal repro against Postgres, not just a
+    // theoretical concern. This write is informational only (admin
+    // visibility) — never the throttle's source of truth.
     req.payload
       .create({
         collection: 'audit-events',
@@ -120,9 +126,11 @@ export const requireTotp: CollectionBeforeLoginHook<User> = async ({ req, user }
     throw new APIError(ka.server.security.totp.invalidCode, 401)
   }
 
-  // Already throttled: reject without touching the row again (leaves the
-  // window's start time — and therefore its expiry — alone).
-  if (failCountBeforeThisAttempt >= THROTTLE_MAX_FAILURES) {
+  // Already throttled: reject without recording this one again (the
+  // reservation, when there is one, already counted it atomically; on the
+  // fallback path this preserves the original "leave the window's start
+  // time alone" behaviour).
+  if (alreadyThrottled) {
     req.payload.logger.info({ userId: user.id, reason: 'throttled' }, 'requireTotp: rejected')
     throw new APIError(ka.server.security.totp.invalidCode, 401)
   }
