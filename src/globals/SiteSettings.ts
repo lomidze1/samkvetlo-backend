@@ -23,6 +23,15 @@ export const SiteSettings: GlobalConfig = {
   },
   fields: [
     { name: 'phone', type: 'text', label: 'ტელეფონი' },
+    // X2 (owner-checklist 2026-09-18): a second number, calls only — no
+    // Viber/WhatsApp on it, unlike `phone`. Shown as the secondary number
+    // next to `phone` in the header, footer and /contact.
+    {
+      name: 'phoneSecondary',
+      type: 'text',
+      label: 'დამატებითი ტელეფონი',
+      admin: { description: 'მხოლოდ ზარისთვის — Viber/WhatsApp არ მუშაობს ამ ნომერზე' },
+    },
     { name: 'email', type: 'text', label: 'ელფოსტა' },
     { name: 'address', type: 'text', label: 'მისამართი' },
     {

@@ -18,6 +18,7 @@ export async function getPublicSiteSettings(payload: Payload): Promise<PublicSit
 
   return {
     phone: settings.phone ?? null,
+    phoneSecondary: settings.phoneSecondary ?? null,
     email: settings.email ?? null,
     address: settings.address ?? null,
     social: (settings.social ?? []).map((entry) => ({ label: entry.label, url: entry.url })),

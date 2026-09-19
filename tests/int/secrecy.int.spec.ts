@@ -347,6 +347,7 @@ describe('supplier-data secrecy (ADR 0005) — T2 integration (SEED_SENTINEL=1)'
       'configuratorEnabled',
       'email',
       'phone',
+      'phoneSecondary',
       'social',
       'store',
     ])

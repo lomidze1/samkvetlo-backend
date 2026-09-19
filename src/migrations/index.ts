@@ -11,6 +11,7 @@ import * as migration_20260919_080426_totp_admin_2fa from './20260919_080426_tot
 import * as migration_20260919_084004_retention_years from './20260919_084004_retention_years';
 import * as migration_20260919_091816_totp_fail_throttle from './20260919_091816_totp_fail_throttle';
 import * as migration_20260919_093101_short_links from './20260919_093101_short_links';
+import * as migration_20260919_100107_phone_secondary from './20260919_100107_phone_secondary';
 
 export const migrations = [
   {
@@ -77,5 +78,10 @@ export const migrations = [
     up: migration_20260919_093101_short_links.up,
     down: migration_20260919_093101_short_links.down,
     name: '20260919_093101_short_links',
+  },
+  {
+    up: migration_20260919_100107_phone_secondary.up,
+    down: migration_20260919_100107_phone_secondary.down,
+    name: '20260919_100107_phone_secondary'
   },
 ];

@@ -1592,6 +1592,10 @@ export interface PricingSetting {
 export interface SiteSetting {
   id: number;
   phone?: string | null;
+  /**
+   * მხოლოდ ზარისთვის — Viber/WhatsApp არ მუშაობს ამ ნომერზე
+   */
+  phoneSecondary?: string | null;
   email?: string | null;
   address?: string | null;
   social?:
@@ -1661,6 +1665,7 @@ export interface PricingSettingsSelect<T extends boolean = true> {
  */
 export interface SiteSettingsSelect<T extends boolean = true> {
   phone?: T;
+  phoneSecondary?: T;
   email?: T;
   address?: T;
   social?:

@@ -5,6 +5,9 @@ import { z } from 'zod'
 // are admin-only fields on the same global — they never reach this DTO.
 export const PublicSiteSettingsSchema = z.strictObject({
   phone: z.string().nullable(),
+  // X2 (owner-checklist 2026-09-18): calls only, no Viber/WhatsApp — unlike
+  // `phone`. Additive field, no CONTRACT_VERSION bump.
+  phoneSecondary: z.string().nullable(),
   email: z.string().nullable(),
   address: z.string().nullable(),
   social: z.array(z.strictObject({ label: z.string(), url: z.string() })),
