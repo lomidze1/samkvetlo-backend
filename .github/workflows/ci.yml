@@ -88,7 +88,28 @@ jobs:
       # over a config change the committed migrations never actually
       # capture — fails this job instead of only surfacing on a real
       # migrate-driven deploy.
-      - run: pnpm test:int
+      # The postgres service container has no volume, so if it restarts
+      # mid-job its init re-runs and samkvetlo_ci comes back empty. The job
+      # keeps going against that empty database and every DB-backed test
+      # fails with `relation ... does not exist` — 34 of 47 files in run
+      # 35493350241, which then passed on a plain re-run with no code
+      # change (same for run 35493395598). `payload migrate` and
+      # `check:migrations` above had both already succeeded against the
+      # schema, so it was there and then gone.
+      #
+      # Root cause is inferred, not proven — it is not reproducible
+      # locally. This re-checks the schema immediately before the tests and
+      # re-applies the migrations if it vanished, so a transient reset
+      # self-heals and is named in the log instead of surfacing as a mass
+      # test failure. A genuine migration problem still fails the step,
+      # because `payload migrate` itself would fail.
+      - name: Integration tests
+        run: |
+          if [ "$(psql "$DATABASE_URL" -tAc "select to_regclass('public.site_settings') is not null")" != "t" ]; then
+            echo "::warning::samkvetlo_ci lost its schema after 'payload migrate' — the postgres service container most likely restarted. Re-applying migrations."
+            pnpm payload migrate
+          fi
+          pnpm test:int
         env:
           PAYLOAD_DB_PUSH: 'false'
 
