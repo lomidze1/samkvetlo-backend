@@ -60,7 +60,12 @@ jobs:
           version: 10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '22.12'
+          # Matches the runtime this project actually deploys on: both Vercel
+          # projects are pinned to 24.x. Testing on 22 while shipping on 24
+          # means the suite never exercises the Node the code runs under.
+          # `engines` stays at >=22.12 — that is a floor for contributors,
+          # not the deploy target.
+          node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
