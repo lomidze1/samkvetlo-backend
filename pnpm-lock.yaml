@@ -30,8 +30,8 @@ importers:
         specifier: ^7.0.3
         version: 7.0.3
       dotenv:
-        specifier: 16.4.7
-        version: 16.4.7
+        specifier: 17.4.2
+        version: 17.4.2
       file-type:
         specifier: 22.1.0
         version: 22.1.0(supports-color@8.1.1)
