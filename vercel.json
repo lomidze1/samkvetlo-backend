@@ -4,7 +4,6 @@
   "regions": ["fra1"],
   "buildCommand": "DATABASE_URL=\"${DATABASE_URL_MIGRATOR:-$DATABASE_URL}\" pnpm payload migrate && pnpm build",
   "crons": [
-    { "path": "/api/cron/exchange-rates", "schedule": "0 7 * * *" },
-    { "path": "/api/cron/retention", "schedule": "30 22 * * *" }
+    { "path": "/api/cron/exchange-rates", "schedule": "0 7 * * *" }
   ]
 }
