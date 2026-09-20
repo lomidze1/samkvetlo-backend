@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # 2026-09-20: dev is the working branch and the repo default, so a push
+    # to it is the everyday case — with [main] alone the suite only ran on
+    # PRs and daily work went unchecked.
+    branches: [main, dev]
   pull_request:
 
 # Code review finding: without this, jobs inherit the repo/org default
