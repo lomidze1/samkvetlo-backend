@@ -123,8 +123,10 @@ describe('media collection (T1.1, ADR 0005 layer 4 / ADR 0013)', () => {
     }
   })
 
-  it('rejects a photo narrower than 1280 px', async () => {
-    const data = await loadFixture('product-1000-narrow.jpg')
+  // 2026-10-16: the floor is 640 px (ADR 0013 update note), so the 1000 px
+  // fixture is now accepted and a 500 px one proves the rejection.
+  it('rejects a photo narrower than 640 px', async () => {
+    const data = await loadFixture('product-500-narrow.jpg')
     await expect(
       payload.create({
         collection: 'media',

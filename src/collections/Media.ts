@@ -14,7 +14,11 @@ const IMAGE_WIDTHS = [320, 640, 960, 1280, 1920] as const
 const MEDIA_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
 
 // ADR 0013 §7: smaller originals are rejected instead of being upscaled.
-const MIN_IMAGE_WIDTH = 1280
+// 2026-10-16: lowered from 1280 to 640 — the supplier's icon photos are
+// 680–860 px wide and the owner asked for real photos now; the card (≤ 300 px)
+// and gallery (≤ 640 px) never upscale them, only the lightbox does. ⏳ owner
+// review; see ADR 0013 update note.
+const MIN_IMAGE_WIDTH = 640
 
 export const Media: CollectionConfig = {
   slug: 'media',
