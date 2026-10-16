@@ -10,7 +10,7 @@ Payload CMS ადმინი + `/api/public/*` DTO API სამკვეთ�
 2. `cp .env.example .env` და შეავსე `PAYLOAD_SECRET` (მაგ. `openssl rand -hex 32`)
 3. `pnpm db:up` — უშვებს Postgres 18-ს Docker-ში (`samkvetlo` + `samkvetlo_test` ბაზები)
 4. `pnpm dev` → გახსენი [http://localhost:3001/admin](http://localhost:3001/admin) და შექმენი პირველი user
-5. **2FA (ADR 0018, T5.17, launch-ის ბლოკერი):** login TOTP კოდსაც ითხოვს — ჩართე პირველი user-ისთვის `pnpm admin:totp --email <შენი user-ის email>` (Docker-ში: `docker compose exec backend pnpm admin:totp --email <e>`). დეტალები: [`docs/runbooks/admin-totp.md`](docs/runbooks/admin-totp.md)
+5. **2FA (ADR 0018, T5.17, launch-ის ბლოკერი):** login TOTP კოდსაც ითხოვს — ჩართე პირველი user-ისთვის `pnpm admin:totp --email <შენი user-ის email>`. დეტალები: [`docs/runbooks/admin-totp.md`](docs/runbooks/admin-totp.md)
 
 `pnpm db:down` აჩერებს ბაზას. `docker compose down -v` შლის მონაცემებსაც (სუფთა თავიდან დაწყებისთვის).
 

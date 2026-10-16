@@ -46,10 +46,10 @@ MVP-ში (ADR 0018 §4) recovery codes არ იწერება — ტე
 
 ## გაშვება environment-ების მიხედვით
 
-### ლოკალური Docker
+### ლოკალური (host-ზე, Docker Postgres 5433-ზე)
 
 ```bash
-docker compose exec backend pnpm admin:totp --email admin@samkvetlo.local --create
+pnpm admin:totp --email admin@samkvetlo.local --create
 ```
 
 ### Prod (Neon)
