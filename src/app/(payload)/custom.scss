@@ -1,0 +1,29 @@
+// Sidebar nav: Payload's 13px is too small for Georgian labels (+3px).
+.nav__link,
+.nav-group__toggle {
+  font-size: 16px;
+}
+
+// Header actions (only BackButton) sit left of the breadcrumb.
+.app-header__actions-wrapper {
+  order: -1;
+}
+
+.admin-back-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-inline-end: 8px;
+  border: 1px solid var(--theme-elevation-150);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--theme-elevation-800);
+  font-size: 18px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--theme-elevation-100);
+  }
+}

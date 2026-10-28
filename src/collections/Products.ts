@@ -23,6 +23,7 @@ export const Products: CollectionConfig = {
   },
   admin: {
     useAsTitle: 'title',
+    defaultColumns: ['title', 'source', 'category', 'tier', '_status'],
   },
   access: {
     // ADR 0005: an anonymous ?draft=true request must never see a draft
@@ -199,6 +200,18 @@ export const Products: CollectionConfig = {
         position: 'sidebar',
         components: {
           Field: '/components/admin/ProductCostingLinks#ProductCostingLinks',
+        },
+      },
+    },
+    // List column only: link to the supplier's product page (admin-only).
+    {
+      name: 'source',
+      type: 'ui',
+      label: 'წყარო',
+      admin: {
+        components: {
+          Field: false,
+          Cell: '/components/admin/SourceLinks#ProductSourceCell',
         },
       },
     },

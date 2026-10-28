@@ -107,6 +107,8 @@ export default buildConfig({
       // T1.4: "P% დაუდასტურებელია" banner, visible only while
       // pricing-settings.pConfirmed = false (ADR 0006).
       beforeDashboard: ['/components/admin/PConfirmedBanner#PConfirmedBanner'],
+      // Header "←" back button; moved left of the breadcrumb in custom.scss.
+      actions: ['/components/admin/BackButton#BackButton'],
       // ADR 0018 (T5.17): replaces the built-in login view with one that
       // also submits a TOTP code, in the same request as the password.
       views: {

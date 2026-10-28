@@ -39,7 +39,12 @@ export const Costings: CollectionConfig = {
   fields: [
     { name: 'variant', type: 'relationship', relationTo: 'variants', required: true, unique: true, label: 'ვარიანტი' },
     { name: 'supplier', type: 'relationship', relationTo: 'suppliers', label: 'მომწოდებელი' },
-    { name: 'supplierUrl', type: 'text', label: 'მომწოდებლის ბმული' },
+    {
+      name: 'supplierUrl',
+      type: 'text',
+      label: 'მომწოდებლის ბმული',
+      admin: { components: { Cell: '/components/admin/SourceLinks#SupplierUrlCell' } },
+    },
     { name: 'supplierSku', type: 'text', label: 'მომწოდებლის არტიკული' },
     { name: 'costRub', type: 'number', required: true, label: 'ღირებულება (₽)', min: 0 },
     { name: 'logisticsGel', type: 'number', required: true, label: 'ლოგისტიკა თბილისამდე (₾)', min: 0 },
