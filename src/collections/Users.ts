@@ -1,7 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 import { isAdminField } from '../access/isAdminField'
-import { ADMIN, isSuperAdmin, isSuperAdminField, SUPER_ADMIN, superAdminNotSelf, superAdminOrSelf } from '../access/isSuperAdmin'
+import { ADMIN, hasSuperAdminRole, isSuperAdmin, SUPER_ADMIN, superAdminNotSelf, superAdminOrSelf } from '../access/isSuperAdmin'
 import { resetTotpEndpoint } from '../endpoints/resetTotp'
 import { auditLogin } from './hooks/loginAudit'
 import { enforcePasswordMinLength } from './hooks/passwordPolicy'
@@ -9,12 +9,20 @@ import { requireTotp } from './hooks/requireTotp'
 import { reserveTotpAttempt } from './hooks/reserveTotpAttempt'
 import { flagPasswordChange, revokeSessionsOnPasswordChange, revokeSessionsOnPasswordReset } from './hooks/revokeOnPasswordChange'
 import { clampRefreshExpiry, enforceSessionMaxAge } from './hooks/sessionMaxAge'
-import { openEnrollmentOnCreate, preventSelfDemotion } from './hooks/userRoles'
+import { openEnrollmentOnCreate } from './hooks/userRoles'
 
 export const Users: CollectionConfig = {
   slug: 'users',
+  // These are the admin-panel accounts; the site itself has no customer accounts.
+  labels: {
+    singular: 'ადმინი',
+    plural: 'ადმინები',
+  },
   admin: {
     useAsTitle: 'email',
+    // The list is account management, Super Admin only; an Admin reaches
+    // their own account through the avatar (top right).
+    hidden: ({ user }) => !hasSuperAdminRole(user),
     defaultColumns: ['email', 'role', 'totpEnabledAt'],
   },
   // ADR 0018 addendum C: a Super Admin creates, deletes and resets accounts;
@@ -45,7 +53,7 @@ export const Users: CollectionConfig = {
   },
   hooks: {
     beforeValidate: [enforcePasswordMinLength, flagPasswordChange],
-    beforeChange: [openEnrollmentOnCreate, preventSelfDemotion],
+    beforeChange: [openEnrollmentOnCreate],
     // ADR 0018 (T5.17): 2FA gate — closes the T5.9 spike's hole (a user
     // with no TOTP secret used to reach admin-only data with just the
     // password). Runs before jwtSign, in the same request/transaction as
@@ -90,8 +98,11 @@ export const Users: CollectionConfig = {
         { label: 'Super Admin', value: SUPER_ADMIN },
         { label: 'Admin', value: ADMIN },
       ],
-      admin: { position: 'sidebar' },
-      access: { read: isAdminField, create: isSuperAdminField, update: isSuperAdminField },
+      // Shown, never edited in the admin: there is one Super Admin (the
+      // owner, made by scripts/admin-totp.ts); everyone added in the admin
+      // is an Admin.
+      admin: { position: 'sidebar', readOnly: true },
+      access: { read: isAdminField, create: () => false, update: () => false },
     },
     // ADR 0018 §1: never exposed over the API (login response, GET
     // /api/users/:id, /me, JWT payload) or the admin UI — written only by

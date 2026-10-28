@@ -34,6 +34,12 @@
   }
 }
 
+// Read-only dates (2FA ჩართულია, QR-ის ვადა): no clear (✕) or calendar
+// icon, since neither can be used there.
+.date-time-field.read-only .date-time-picker__icon-wrap {
+  display: none;
+}
+
 // Header actions (only BackButton) sit left of the breadcrumb.
 .app-header__actions-wrapper {
   order: -1;

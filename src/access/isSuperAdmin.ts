@@ -1,20 +1,17 @@
-import type { Access, FieldAccess } from 'payload'
+import type { Access } from 'payload'
 
 // ADR 0018 addendum C: two roles. Every logged-in user is an admin for
 // catalog/pricing/orders (isAdmin.ts); only a Super Admin manages accounts.
 
-type RoleCarrier = { role?: string | null } | null | undefined
-
 export const SUPER_ADMIN = 'super-admin'
 export const ADMIN = 'admin'
 
-export function hasSuperAdminRole(user: RoleCarrier): boolean {
-  return user?.role === SUPER_ADMIN
+// `unknown`: also called with the admin UI's ClientUser, which has no `role` in its type.
+export function hasSuperAdminRole(user: unknown): boolean {
+  return (user as { role?: unknown } | null | undefined)?.role === SUPER_ADMIN
 }
 
 export const isSuperAdmin: Access = ({ req }) => hasSuperAdminRole(req.user)
-
-export const isSuperAdminField: FieldAccess = ({ req }) => hasSuperAdminRole(req.user)
 
 /** Super Admin: every account. Admin: only their own. */
 export const superAdminOrSelf: Access = ({ req }) => {

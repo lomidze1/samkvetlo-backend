@@ -93,12 +93,12 @@ describe('user roles and first-login 2FA (ADR 0018 addendum C)', () => {
       ).resolves.toMatchObject({ id: admin.id })
     })
 
-    it('a Super Admin can create and delete others, but not delete or demote themselves', async () => {
+    it('a Super Admin can create and delete others, but not delete themselves or change a role', async () => {
       const superAdmin = await createUser(SUPER_EMAIL, 'super-admin')
 
       const created = await payload.create({
         collection: 'users',
-        data: { email: NEW_EMAIL, password: PASSWORD },
+        data: { email: NEW_EMAIL, password: PASSWORD, role: 'super-admin' },
         user: superAdmin,
         overrideAccess: false,
       })
@@ -116,15 +116,15 @@ describe('user roles and first-login 2FA (ADR 0018 addendum C)', () => {
         payload.delete({ collection: 'users', id: superAdmin.id, user: superAdmin, overrideAccess: false }),
       ).rejects.toMatchObject({ status: 403 })
 
-      await expect(
-        payload.update({
-          collection: 'users',
-          id: superAdmin.id,
-          data: { role: 'admin' },
-          user: superAdmin,
-          overrideAccess: false,
-        }),
-      ).rejects.toMatchObject({ status: 400 })
+      // Roles are never edited in the admin, not even by a Super Admin.
+      const demoted = await payload.update({
+        collection: 'users',
+        id: superAdmin.id,
+        data: { role: 'admin' },
+        user: superAdmin,
+        overrideAccess: false,
+      })
+      expect(demoted.role).toBe('super-admin')
 
       await payload.delete({ collection: 'users', id: created.id, user: superAdmin, overrideAccess: false })
     })
