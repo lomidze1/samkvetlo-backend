@@ -118,6 +118,7 @@ export const Products: CollectionConfig = {
       relationTo: 'media',
       hasMany: true,
       label: 'გალერეა',
+      admin: { components: { Cell: '/components/admin/GalleryCell#GalleryCell' } },
     },
     {
       name: 'whyQuality',
