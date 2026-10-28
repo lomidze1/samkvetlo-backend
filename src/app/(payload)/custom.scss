@@ -4,6 +4,36 @@
   font-size: 16px;
 }
 
+// First-login 2FA enrollment on the login screen (EnrollmentQr.tsx).
+.enrollment-qr {
+  margin-top: 8px;
+
+  img {
+    display: block;
+    margin: 12px 0;
+    background: #fff;
+    border-radius: 4px;
+  }
+
+  &__button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--theme-elevation-800);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  &__secret code {
+    font-size: 14px;
+    word-break: break-all;
+  }
+
+  &__error {
+    color: var(--theme-error-500);
+  }
+}
+
 // Header actions (only BackButton) sit left of the breadcrumb.
 .app-header__actions-wrapper {
   order: -1;

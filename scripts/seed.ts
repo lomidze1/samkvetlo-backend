@@ -111,7 +111,11 @@ async function ensureAdmin(payload: Payload): Promise<void> {
     if (!docs[0].totpSecret) await ensureAdminTotp(payload, email, docs[0].id)
     return
   }
-  const user = await payload.create({ collection: 'users', data: { email, password }, overrideAccess: true })
+  const user = await payload.create({
+    collection: 'users',
+    data: { email, password, role: 'super-admin' },
+    overrideAccess: true,
+  })
   await ensureAdminTotp(payload, email, user.id)
 }
 

@@ -81,6 +81,10 @@ export const ka = {
         loginEmailLabel: 'ელფოსტა',
         loginPasswordLabel: 'პაროლი',
         loginCodeLabel: 'ავთენტიფიკატორის კოდი',
+        enrollmentRequired: 'დაასკანერეთ QR კოდი ავთენტიფიკატორის აპით და შეიყვანეთ 6-ციფრიანი კოდი',
+      },
+      roles: {
+        cannotDemoteSelf: 'საკუთარ როლს ვერ შეცვლით',
       },
     },
     // ADR 0014 §12 (D25) / T5.12: the retention cron's owner digest — sent

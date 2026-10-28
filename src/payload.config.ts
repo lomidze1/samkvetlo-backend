@@ -2,7 +2,7 @@ import { postgresAdapter } from '@payloadcms/db-postgres'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import { s3Storage } from '@payloadcms/storage-s3'
 import path from 'path'
-import { buildConfig, type Plugin } from 'payload'
+import { buildConfig, type Config, type Plugin } from 'payload'
 import { fileURLToPath } from 'url'
 import sharp from 'sharp'
 
@@ -95,6 +95,10 @@ export default buildConfig({
   // revalidate webhook (T1.11) from also catching Payload's own telemetry
   // call.
   telemetry: false,
+  // ADR 0018 addendum C: `info` logs only the message; the QR response's
+  // data (the enrollment secret) must never reach the server log. The type
+  // lists only Payload's own error names; logError looks up any err.name.
+  loggingLevels: { TotpEnrollmentRequired: 'info' } as NonNullable<Config['loggingLevels']>,
   admin: {
     user: Users.slug,
     importMap: {

@@ -1,25 +1,32 @@
 import type { CollectionConfig } from 'payload'
 
-import { isAdmin } from '../access/isAdmin'
 import { isAdminField } from '../access/isAdminField'
+import { ADMIN, isSuperAdmin, isSuperAdminField, SUPER_ADMIN, superAdminNotSelf, superAdminOrSelf } from '../access/isSuperAdmin'
+import { resetTotpEndpoint } from '../endpoints/resetTotp'
 import { auditLogin } from './hooks/loginAudit'
 import { enforcePasswordMinLength } from './hooks/passwordPolicy'
 import { requireTotp } from './hooks/requireTotp'
 import { reserveTotpAttempt } from './hooks/reserveTotpAttempt'
 import { flagPasswordChange, revokeSessionsOnPasswordChange, revokeSessionsOnPasswordReset } from './hooks/revokeOnPasswordChange'
 import { clampRefreshExpiry, enforceSessionMaxAge } from './hooks/sessionMaxAge'
+import { openEnrollmentOnCreate, preventSelfDemotion } from './hooks/userRoles'
 
 export const Users: CollectionConfig = {
   slug: 'users',
   admin: {
     useAsTitle: 'email',
+    defaultColumns: ['email', 'role', 'totpEnabledAt'],
   },
+  // ADR 0018 addendum C: a Super Admin creates, deletes and resets accounts;
+  // an Admin sees and edits (e.g. the password of) only their own account.
   access: {
-    create: isAdmin,
-    read: isAdmin,
-    update: isAdmin,
-    delete: isAdmin,
+    create: isSuperAdmin,
+    read: superAdminOrSelf,
+    update: superAdminOrSelf,
+    delete: superAdminNotSelf,
+    unlock: isSuperAdmin,
   },
+  endpoints: [resetTotpEndpoint],
   // ADR 0014 §4: named accounts only, lockout after 5 failed attempts,
   // secure cookies in production.
   auth: {
@@ -38,6 +45,7 @@ export const Users: CollectionConfig = {
   },
   hooks: {
     beforeValidate: [enforcePasswordMinLength, flagPasswordChange],
+    beforeChange: [openEnrollmentOnCreate, preventSelfDemotion],
     // ADR 0018 (T5.17): 2FA gate — closes the T5.9 spike's hole (a user
     // with no TOTP secret used to reach admin-only data with just the
     // password). Runs before jwtSign, in the same request/transaction as
@@ -71,6 +79,20 @@ export const Users: CollectionConfig = {
   },
   fields: [
     // Email added by default
+    {
+      name: 'role',
+      type: 'select',
+      label: 'როლი',
+      // Not `required`, so the generated type doesn't force `role` on every
+      // create; the column is nullable, and a null role counts as Admin.
+      defaultValue: ADMIN,
+      options: [
+        { label: 'Super Admin', value: SUPER_ADMIN },
+        { label: 'Admin', value: ADMIN },
+      ],
+      admin: { position: 'sidebar' },
+      access: { read: isAdminField, create: isSuperAdminField, update: isSuperAdminField },
+    },
     // ADR 0018 §1: never exposed over the API (login response, GET
     // /api/users/:id, /me, JWT payload) or the admin UI — written only by
     // the CLI (scripts/admin-totp.ts) and requireTotp.ts, both via Local
@@ -115,6 +137,29 @@ export const Users: CollectionConfig = {
       label: '2FA ჩართულია',
       admin: { readOnly: true, position: 'sidebar' },
       access: { read: isAdminField, create: () => false, update: () => false },
+    },
+    // ADR 0018 addendum C: set on create and by "reset 2FA"; cleared once
+    // the user scans the first-login QR (requireTotp.ts).
+    {
+      name: 'enrollmentOpenUntil',
+      type: 'date',
+      label: 'QR-ის ვადა (პირველი შესვლა)',
+      admin: {
+        readOnly: true,
+        position: 'sidebar',
+        date: { pickerAppearance: 'dayAndTime' },
+        condition: (data) => !data?.totpEnabledAt,
+      },
+      access: { read: isAdminField, create: () => false, update: () => false },
+    },
+    {
+      name: 'resetTotpAction',
+      type: 'ui',
+      label: '2FA-ს განულება',
+      admin: {
+        position: 'sidebar',
+        components: { Field: '/components/admin/ResetTotpButton#ResetTotpButton' },
+      },
     },
   ],
 }

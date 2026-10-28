@@ -1,3 +1,5 @@
+import { createHmac } from 'node:crypto'
+
 import { Secret, TOTP } from 'otpauth'
 
 // ADR 0018: in-house TOTP (RFC 6238), 30 s step, 6 digits, SHA-1. Pure
@@ -21,6 +23,19 @@ function makeTotp(secretBase32: string): TOTP {
 /** New random 160-bit secret (base32) for a fresh enrollment/rotation. */
 export function generateTotpSecret(): string {
   return new Secret({ size: 20 }).base32
+}
+
+/**
+ * ADR 0018 addendum C: the secret a not-yet-enrolled user scans on first
+ * login. Derived (HMAC of the server key, the user id and the enrollment
+ * deadline) instead of stored, because the QR is handed out by a login
+ * request that always fails — a write there would be rolled back with the
+ * login transaction. A reset sets a new deadline, so a new secret.
+ */
+export function deriveEnrollmentSecret(key: string, userId: number | string, openUntil: string): string {
+  const deadline = new Date(openUntil).toISOString()
+  const bytes = createHmac('sha256', key).update(`samkvetlo-totp-enroll:${userId}:${deadline}`).digest().subarray(0, 20)
+  return new Secret({ buffer: Uint8Array.from(bytes).buffer }).base32
 }
 
 /** `otpauth://` URI for an authenticator app (Google Authenticator, 1Password, ...). */

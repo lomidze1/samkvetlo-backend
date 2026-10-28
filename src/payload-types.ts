@@ -165,11 +165,13 @@ export interface UserAuthOperations {
  */
 export interface User {
   id: number;
+  role?: ('super-admin' | 'admin') | null;
   totpSecret?: string | null;
   totpLastStep?: number | null;
   totpFailCount?: number | null;
   totpFailWindowStart?: string | null;
   totpEnabledAt?: string | null;
+  enrollmentOpenUntil?: string | null;
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -1005,11 +1007,13 @@ export interface PayloadMigration {
  * via the `definition` "users_select".
  */
 export interface UsersSelect<T extends boolean = true> {
+  role?: T;
   totpSecret?: T;
   totpLastStep?: T;
   totpFailCount?: T;
   totpFailWindowStart?: T;
   totpEnabledAt?: T;
+  enrollmentOpenUntil?: T;
   updatedAt?: T;
   createdAt?: T;
   email?: T;

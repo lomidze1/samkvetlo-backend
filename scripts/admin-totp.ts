@@ -86,9 +86,11 @@ async function main(): Promise<void> {
       process.exit(1)
       return
     }
+    // ADR 0018 addendum C: the CLI bootstraps the first (prod) account, so
+    // it is a Super Admin; everyone else is created in the admin UI.
     const created = await payload.create({
       collection: 'users',
-      data: { email, password },
+      data: { email, password, role: 'super-admin' },
       overrideAccess: true,
     })
     userId = created.id
@@ -102,6 +104,7 @@ async function main(): Promise<void> {
       totpSecret: secret,
       totpLastStep: null,
       totpEnabledAt: new Date().toISOString(),
+      enrollmentOpenUntil: null,
       totpFailCount: 0,
       totpFailWindowStart: null,
     },

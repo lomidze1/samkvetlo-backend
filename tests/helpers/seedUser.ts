@@ -29,9 +29,10 @@ export async function seedTestUser(): Promise<void> {
   })
 
   // Create fresh test user
+  // ADR 0018 addendum C: the e2e admin tests manage users, so Super Admin.
   const user = await payload.create({
     collection: 'users',
-    data: testUser,
+    data: { ...testUser, role: 'super-admin' },
   })
   testUserTotpSecret = await enrollTotp(payload, user.id)
 }

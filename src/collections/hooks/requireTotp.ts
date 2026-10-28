@@ -4,7 +4,19 @@ import { sql } from '@payloadcms/db-postgres'
 import type { User } from '../../payload-types'
 import { ka } from '../../i18n/ka'
 import { TOTP_RESERVATION_CONTEXT_KEY, type TotpReservation } from './reserveTotpAttempt'
-import { verifyTotp } from '../../server/security/totp'
+import { buildOtpauthUri, deriveEnrollmentSecret, verifyTotp } from '../../server/security/totp'
+
+/**
+ * ADR 0018 addendum C: the first-login QR response. Its own class so that
+ * payload.config's `loggingLevels` logs it at `info` (message only) — at the
+ * default `error` level Payload's logError prints `data`, i.e. the secret.
+ */
+export class TotpEnrollmentRequired extends APIError {
+  constructor(data: { otpauthUri: string; secret: string }) {
+    super(ka.server.security.totp.enrollmentRequired, 403, data, true)
+    this.name = 'TotpEnrollmentRequired'
+  }
+}
 
 const THROTTLE_WINDOW_MS_SQL = "interval '15 minutes'"
 const THROTTLE_MAX_FAILURES = 5
@@ -135,18 +147,39 @@ export const requireTotp: CollectionBeforeLoginHook<User> = async ({ context, re
     throw new APIError(ka.server.security.totp.invalidCode, 401)
   }
 
+  // ADR 0018 addendum C: first-login enrollment. Only an account with no
+  // secret and an open window (set on create / by a Super Admin's reset)
+  // qualifies; anything else stays fail-closed below. This hook runs after
+  // Payload has checked the password, so the QR is only ever handed to
+  // someone who knows it.
+  const openUntil = user.enrollmentOpenUntil ?? null
+  const enrollmentSecret =
+    !user.totpSecret && openUntil && new Date(openUntil).getTime() > Date.now()
+      ? deriveEnrollmentSecret(req.payload.secret, user.id, openUntil)
+      : null
+
+  if (req.data?.enroll === true) {
+    if (!enrollmentSecret) return recordFailure('enrollment-not-open')
+    req.payload.logger.info({ userId: user.id }, 'requireTotp: enrollment QR issued')
+    throw new TotpEnrollmentRequired({
+      otpauthUri: buildOtpauthUri(enrollmentSecret, user.email),
+      secret: enrollmentSecret,
+    })
+  }
+
   if (typeof code !== 'string' || !/^\d{6}$/.test(code)) {
     return recordFailure('missing-or-malformed-code')
   }
 
   // Fail closed (ADR 0018 §2.2): a user with no secret can never log in,
-  // regardless of code — this is exactly the T5.9 spike's (c) hole.
-  const secret = user.totpSecret
+  // regardless of code — this is exactly the T5.9 spike's (c) hole —
+  // unless they are completing enrollment with the QR's code.
+  const secret = user.totpSecret ?? enrollmentSecret
   if (!secret) {
     return recordFailure('no-totp-secret')
   }
 
-  const result = verifyTotp({ secret, code, lastStep: user.totpLastStep })
+  const result = verifyTotp({ secret, code, lastStep: user.totpSecret ? user.totpLastStep : null })
   if (!result.ok) {
     return recordFailure('invalid-or-replayed-code')
   }
@@ -154,14 +187,22 @@ export const requireTotp: CollectionBeforeLoginHook<User> = async ({ context, re
   // Success: persist the new lastStep and reset the failure counter inside
   // the login transaction (`req`) — plain field updates, not the
   // audit-events/counter writes the deadlock risk above is about (this one
-  // never throws afterward, so it isn't rolled back).
+  // never throws afterward, so it isn't rolled back). On enrollment the
+  // derived secret becomes the stored one and the window closes.
+  const enrolled = !user.totpSecret
   await req.payload.update({
     collection: 'users',
     id: user.id,
-    data: { totpLastStep: result.step, totpFailCount: 0, totpFailWindowStart: null },
+    data: {
+      totpLastStep: result.step,
+      totpFailCount: 0,
+      totpFailWindowStart: null,
+      ...(enrolled ? { totpSecret: secret, totpEnabledAt: new Date().toISOString(), enrollmentOpenUntil: null } : {}),
+    },
     overrideAccess: true,
     req,
   })
+  if (enrolled) req.payload.logger.info({ userId: user.id }, 'requireTotp: enrolled on first login')
 
   return user
 }

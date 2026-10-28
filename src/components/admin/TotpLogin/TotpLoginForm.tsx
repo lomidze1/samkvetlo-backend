@@ -5,6 +5,7 @@ import { EmailField, Form, FormSubmit, Link, PasswordField, TextField, useAuth, 
 import { email as validateEmail, formatAdminURL, getSafeRedirect } from 'payload/shared'
 
 import { ka } from '../../../i18n/ka'
+import { EnrollmentQr } from './EnrollmentQr'
 
 const baseClass = 'login__form'
 
@@ -83,6 +84,7 @@ export const TotpLoginForm: React.FC<TotpLoginFormProps> = ({ redirectTo }) => {
           path="totp"
           validate={validateTotpCode}
         />
+        <EnrollmentQr loginUrl={formatAdminURL({ apiRoute, path: `/${userSlug}/login` })} />
       </div>
       <Link href={formatAdminURL({ adminRoute, path: forgotRoute })} prefetch={false}>
         {t('authentication:forgotPasswordQuestion')}
