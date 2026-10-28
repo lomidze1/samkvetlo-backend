@@ -247,6 +247,33 @@ describe('costings + approve endpoint (T1.4, ADR 0006)', () => {
     ).rejects.toMatchObject({ status: 400 })
   })
 
+  // changes.md §13: a „ფასი მოთხოვნით“ item has a costing without costRub.
+  it('a costing without costRub computes nothing and cannot be approved', async () => {
+    await createRate()
+    const variant = await createVariantForCosting()
+    const costing = await payload.create({
+      collection: 'costings',
+      data: { variant: variant.id, logisticsGel: 0, supplierSku: 'test:on-request' },
+    })
+    expect(costing.costRub ?? null).toBeNull()
+    expect(costing.suggestedPriceGel ?? null).toBeNull()
+    expect(costing.indicator ?? null).toBeNull()
+
+    const admin = await createAdmin()
+    await expect(
+      callApprove(
+        fakeReq({ user: admin, routeParams: { id: String(costing.id) }, data: { price: 5_000 } }),
+      ),
+    ).rejects.toMatchObject({ status: 400 })
+    const unchanged = await payload.findByID({ collection: 'variants', id: variant.id, depth: 0 })
+    expect(unchanged.priceStatus).toBe('draft')
+
+    // Once the owner enters the price, the costing computes as usual.
+    const priced = await payload.update({ collection: 'costings', id: costing.id, data: { costRub: 500_000 } })
+    expect(priced.indicator).toBe('green')
+    expect(typeof priced.suggestedPriceGel).toBe('number')
+  })
+
   // Code review fix (T1.1–T1.8): the variant and costing updates ran as two
   // separate, un-transacted Local API calls — a costing-write failure after
   // the variant write succeeded left the variant price changed with no

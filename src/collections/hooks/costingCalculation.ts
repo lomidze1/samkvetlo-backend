@@ -19,6 +19,19 @@ function idOf(value: unknown): number | string | undefined {
 export const computeCostingFields: CollectionBeforeChangeHook = async ({ data, req, originalDoc }) => {
   if (!data) return data
 
+  // No supplier price yet („ფასი მოთხოვნით“): nothing to compute.
+  const costRub = data.costRub !== undefined ? data.costRub : originalDoc?.costRub
+  if (typeof costRub !== 'number') {
+    return {
+      ...data,
+      costGel: null,
+      markupGel: null,
+      suggestedPriceGel: null,
+      markupSharePct: null,
+      indicator: null,
+    }
+  }
+
   const settings = await req.payload.findGlobal({ slug: 'pricing-settings', req })
   const { docs: rates } = await req.payload.find({
     collection: 'exchange-rates',
@@ -55,7 +68,6 @@ export const computeCostingFields: CollectionBeforeChangeHook = async ({ data, r
     }
   }
 
-  const costRub = data.costRub ?? originalDoc?.costRub ?? 0
   const logisticsGel = data.logisticsGel ?? originalDoc?.logisticsGel ?? 0
   const otherCostsGel = data.otherCostsGel ?? originalDoc?.otherCostsGel ?? 0
   const bankFeePct = data.bankFeePct ?? originalDoc?.bankFeePct ?? settings.defaultBankFeePct

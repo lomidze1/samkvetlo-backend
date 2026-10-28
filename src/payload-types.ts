@@ -483,7 +483,10 @@ export interface Costing {
   supplier?: (number | null) | Supplier;
   supplierUrl?: string | null;
   supplierSku?: string | null;
-  costRub: number;
+  /**
+   * ცარიელი = ფასი მოთხოვნით (მომწოდებელს ფასი არ აქვს); ფასი არ ითვლება და ვერ დადასტურდება
+   */
+  costRub?: number | null;
   logisticsGel: number;
   otherCostsGel?: number | null;
   /**

@@ -46,7 +46,15 @@ export const Costings: CollectionConfig = {
       admin: { components: { Cell: '/components/admin/SourceLinks#SupplierUrlCell' } },
     },
     { name: 'supplierSku', type: 'text', label: 'მომწოდებლის არტიკული' },
-    { name: 'costRub', type: 'number', required: true, label: 'ღირებულება (₽)', min: 0 },
+    // Empty = „ფასი მოთხოვნით“ (changes.md §13): the supplier gives no price
+    // yet, so nothing is computed and the price cannot be approved.
+    {
+      name: 'costRub',
+      type: 'number',
+      label: 'ღირებულება (₽)',
+      min: 0,
+      admin: { description: 'ცარიელი = ფასი მოთხოვნით (მომწოდებელს ფასი არ აქვს); ფასი არ ითვლება და ვერ დადასტურდება' },
+    },
     { name: 'logisticsGel', type: 'number', required: true, label: 'ლოგისტიკა თბილისამდე (₾)', min: 0 },
     { name: 'otherCostsGel', type: 'number', label: 'სხვა ხარჯი (₾)', defaultValue: 0, min: 0 },
     {

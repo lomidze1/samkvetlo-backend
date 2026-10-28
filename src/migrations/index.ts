@@ -16,6 +16,7 @@ import * as migration_20260919_105935_revoke_sessions_2fa from './20260919_10593
 import * as migration_20260919_180058_terms_page_slug from './20260919_180058_terms_page_slug';
 import * as migration_20261028_073850_user_roles_enrollment from './20261028_073850_user_roles_enrollment';
 import * as migration_20261028_091530_category_intro from './20261028_091530_category_intro';
+import * as migration_20261028_125738_costing_cost_rub_optional from './20261028_125738_costing_cost_rub_optional';
 
 export const migrations = [
   {
@@ -106,6 +107,11 @@ export const migrations = [
   {
     up: migration_20261028_091530_category_intro.up,
     down: migration_20261028_091530_category_intro.down,
-    name: '20261028_091530_category_intro'
+    name: '20261028_091530_category_intro',
+  },
+  {
+    up: migration_20261028_125738_costing_cost_rub_optional.up,
+    down: migration_20261028_125738_costing_cost_rub_optional.down,
+    name: '20261028_125738_costing_cost_rub_optional'
   },
 ];

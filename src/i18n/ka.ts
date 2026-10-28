@@ -16,6 +16,7 @@ export const ka = {
       priceRequired: 'price სავალდებულოა და დადებითი რიცხვი უნდა იყოს',
       redNeedsOverride: 'ინდიკატორი 🔴-ია — დადასტურებისთვის საჭიროა overrideRed და მიზეზი',
       redNeedsReason: '🔴 override-ისთვის მიზეზი სავალდებულოა',
+      costRequired: 'ღირებულება (₽) ცარიელია (ფასი მოთხოვნით) — ჯერ შეიყვანეთ ღირებულება',
       needsReviewSubject: 'ფასების გადასინჯვაა საჭირო — კურსი შეიცვალა',
       needsReviewLine: (sku: string, oldPrice: number, newPrice: number) =>
         `${sku}: ${oldPrice} ₾ → ${newPrice} ₾ (შემოთავაზებული)`,

@@ -71,6 +71,9 @@ export const approvePriceEndpoint: Endpoint = {
         req,
       })
 
+      if (typeof costing.costRub !== 'number') {
+        throw new APIError(ka.server.pricing.costRequired, 400)
+      }
       if (costing.indicator === 'red' && !overrideRed) {
         throw new APIError(ka.server.pricing.redNeedsOverride, 400)
       }

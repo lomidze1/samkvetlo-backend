@@ -6,6 +6,9 @@
 //   pnpm tsx scripts/catalog-import.ts ../_doc/catalog/packages/svetilniki-01.json
 //   pnpm tsx scripts/catalog-import.ts <file.json> --dry-run      # validate only
 //
+// A variant without `costing.costRub` is a „ფასი მოთხოვნით“ item (changes.md
+// §13): its costing keeps the supplier link but computes no price.
+//
 // Idempotent: a draft whose `key` already exists as a costing.supplierSku, or
 // whose title already slugifies to an existing product, is skipped. Safe to
 // run while `pnpm dev` is up; several packages may be imported one after
@@ -40,7 +43,7 @@ type DraftVariant = {
     supplier: string
     supplierUrl: string
     supplierSku: string
-    costRub: number
+    costRub?: number // absent = price on request (changes.md §13)
     logisticsGel: number
     otherCostsGel?: number
     notes?: string
@@ -93,8 +96,10 @@ function validate(drafts: unknown): Draft[] {
       if (!v.title) problems.push(`${at} variant ${j + 1}: title missing`)
       if (!COATINGS.includes(v.coating)) problems.push(`${at} variant ${j + 1}: coating must be one of ${COATINGS.join('|')}`)
       const c = v.costing
-      if (!c || typeof c.costRub !== 'number' || typeof c.logisticsGel !== 'number' || !c.supplierSku || !c.supplier)
-        problems.push(`${at} variant ${j + 1}: costing needs supplier, supplierSku, costRub, logisticsGel`)
+      if (!c || typeof c.logisticsGel !== 'number' || !c.supplierSku || !c.supplier)
+        problems.push(`${at} variant ${j + 1}: costing needs supplier, supplierSku, logisticsGel`)
+      if (c && c.costRub !== undefined && typeof c.costRub !== 'number')
+        problems.push(`${at} variant ${j + 1}: costRub must be a number or absent (price on request)`)
     })
     // ADR 0005: the public side must not carry supplier data.
     const publicText = JSON.stringify({ t: d.title, d: d.description, w: d.whyQuality, f: d.features, p: d.photos?.map((p) => p.alt) })
