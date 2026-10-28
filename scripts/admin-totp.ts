@@ -3,6 +3,7 @@
 // database's DATABASE_URL is set — local Docker or (for prod) a Neon
 // connection string. Re-running for an existing secret rotates it (the old
 // authenticator entry stops working).
+import 'dotenv/config'
 import { createInterface } from 'node:readline'
 
 import { getPayload } from 'payload'
