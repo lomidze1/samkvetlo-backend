@@ -35,7 +35,7 @@
     "@payloadcms/richtext-lexical": "3.89.0",
     "@payloadcms/storage-s3": "3.89.0",
     "@payloadcms/ui": "3.89.0",
-    "@sentry/nextjs": "10.75.0",
+    "@sentry/nextjs": "11.9.0",
     "cross-env": "^10.1.0",
     "dotenv": "17.4.2",
     "file-type": "22.1.0",
