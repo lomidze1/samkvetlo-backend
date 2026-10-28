@@ -6,6 +6,7 @@ import type { PublicCategory, PublicCategoryRef } from '../../shared/contract/ca
 interface CategoryNode {
   slug: string
   name: string
+  intro: string | null
   parentId: number | null
   children: CategoryNode[]
 }
@@ -17,7 +18,12 @@ function parentIdOf(parent: Category['parent']): number | null {
 }
 
 function toPublicCategory(node: CategoryNode): PublicCategory {
-  return { slug: node.slug, name: node.name, children: node.children.map(toPublicCategory) }
+  return {
+    slug: node.slug,
+    name: node.name,
+    ...(node.intro ? { intro: node.intro } : {}),
+    children: node.children.map(toPublicCategory),
+  }
 }
 
 /** ADR 0012 §3: GET /api/public/categories — the full tree, anonymous read. */
@@ -33,7 +39,13 @@ export async function getPublicCategories(payload: Payload): Promise<PublicCateg
   const byId = new Map<number, CategoryNode>()
   for (const doc of docs) {
     if (!doc.slug) continue
-    byId.set(doc.id, { slug: doc.slug, name: doc.name, parentId: parentIdOf(doc.parent), children: [] })
+    byId.set(doc.id, {
+      slug: doc.slug,
+      name: doc.name,
+      intro: doc.intro?.trim() || null,
+      parentId: parentIdOf(doc.parent),
+      children: [],
+    })
   }
 
   const roots: CategoryNode[] = []

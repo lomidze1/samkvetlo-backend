@@ -87,6 +87,14 @@ export const Categories: CollectionConfig = {
       relationTo: 'categories',
       label: 'მშობელი კატეგორია',
     },
+    // design-plan-references.md 1.2 (after legacyicons.com): a short text
+    // under the category page's h1; empty means the block isn't shown.
+    {
+      name: 'intro',
+      type: 'textarea',
+      label: 'შესავალი ტექსტი',
+      admin: { description: '2–3 წინადადება კატეგორიის გვერდის სათაურის ქვეშ. ცარიელი = არ ჩანს.' },
+    },
     // T5.4 (301 redirects): filled by trackOldSlugs, never by hand.
     {
       name: 'oldSlugs',

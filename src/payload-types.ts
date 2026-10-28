@@ -313,6 +313,10 @@ export interface Category {
   slug?: string | null;
   parent?: (number | null) | Category;
   /**
+   * 2–3 წინადადება კატეგორიის გვერდის სათაურის ქვეშ. ცარიელი = არ ჩანს.
+   */
+  intro?: string | null;
+  /**
    * ივსება ავტომატურად slug-ის შეცვლისას
    */
   oldSlugs?:
@@ -1159,6 +1163,7 @@ export interface CategoriesSelect<T extends boolean = true> {
   name?: T;
   slug?: T;
   parent?: T;
+  intro?: T;
   oldSlugs?:
     | T
     | {

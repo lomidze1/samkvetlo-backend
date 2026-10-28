@@ -15,6 +15,7 @@ import * as migration_20260919_100107_phone_secondary from './20260919_100107_ph
 import * as migration_20260919_105935_revoke_sessions_2fa from './20260919_105935_revoke_sessions_2fa';
 import * as migration_20260919_180058_terms_page_slug from './20260919_180058_terms_page_slug';
 import * as migration_20261028_073850_user_roles_enrollment from './20261028_073850_user_roles_enrollment';
+import * as migration_20261028_091530_category_intro from './20261028_091530_category_intro';
 
 export const migrations = [
   {
@@ -100,6 +101,11 @@ export const migrations = [
   {
     up: migration_20261028_073850_user_roles_enrollment.up,
     down: migration_20261028_073850_user_roles_enrollment.down,
-    name: '20261028_073850_user_roles_enrollment'
+    name: '20261028_073850_user_roles_enrollment',
+  },
+  {
+    up: migration_20261028_091530_category_intro.up,
+    down: migration_20261028_091530_category_intro.down,
+    name: '20261028_091530_category_intro'
   },
 ];
