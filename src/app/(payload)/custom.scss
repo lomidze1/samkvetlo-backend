@@ -40,6 +40,19 @@
   display: none;
 }
 
+// Read-only selects (the user's role): no dropdown arrow, value in full
+// contrast instead of the greyed-out disabled look.
+.field-type.select.read-only {
+  .rs__indicators {
+    display: none;
+  }
+
+  .rs__single-value {
+    color: var(--theme-elevation-1000);
+    font-weight: 600;
+  }
+}
+
 // Header actions (only BackButton) sit left of the breadcrumb.
 .app-header__actions-wrapper {
   order: -1;
